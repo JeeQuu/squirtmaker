@@ -208,7 +208,13 @@ document.getElementById('background-upload').addEventListener('change', function
 });
 
 // Add loop count change listener
-document.getElementById('loop-count').addEventListener('input', updateDurationDisplay);
+document.getElementById('loop-count').addEventListener('input', function(e) {
+    document.getElementById('loop-count-display').textContent = e.target.value;
+    updateDurationDisplay();
+    if (zoomAnimationActive) {
+        zoomStartTime = 0; // Reset zoom animation
+    }
+});
 
 function updatePreview() {
     const canvas = document.getElementById('preview-canvas');

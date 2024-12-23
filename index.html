@@ -65,9 +65,14 @@
                 </div>
                 <div class="loop-controls">
                     <label>
-                        Number of Loops:
-                        <input type="number" id="loop-count" min="1" max="24" value="1">
+                        Number of Loops: <span id="loop-count-display">1</span>
                     </label>
+                    <input type="range" 
+                           id="loop-count" 
+                           min="1" 
+                           max="24" 
+                           value="1" 
+                           class="styled-slider">
                     <div class="quality-toggle">
                         <label>
                             <input type="checkbox" id="high-quality"> High Quality

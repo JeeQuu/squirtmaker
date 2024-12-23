@@ -395,4 +395,98 @@ input[type="text"] {
 .format-group button {
     margin: 5px;
 }
+
+/* Add touch-friendly slider styles */
+input[type="range"].styled-slider {
+    -webkit-appearance: none;
+    height: 20px;
+    margin: 10px 0;
+    background: transparent;
+}
+
+/* Slider thumb styles */
+input[type="range"].styled-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 28px;
+    width: 28px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    margin-top: -10px; /* offset for track height */
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input[type="range"].styled-slider::-moz-range-thumb {
+    height: 28px;
+    width: 28px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Slider track styles */
+input[type="range"].styled-slider::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 8px;
+    background: #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+input[type="range"].styled-slider::-moz-range-track {
+    width: 100%;
+    height: 8px;
+    background: #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Apply these styles to all range inputs */
+input[type="range"] {
+    -webkit-appearance: none;
+    height: 20px;
+    margin: 10px 0;
+    background: transparent;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 28px;
+    width: 28px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    margin-top: -10px;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input[type="range"]::-moz-range-thumb {
+    height: 28px;
+    width: 28px;
+    border-radius: 50%;
+    background: #007bff;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 8px;
+    background: #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+input[type="range"]::-moz-range-track {
+    width: 100%;
+    height: 8px;
+    background: #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+}
  
