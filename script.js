@@ -311,7 +311,7 @@ function startAnimationLoop() {
                 for (let i = 0; i < PARTICLE_COUNT; i++) {
                     const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
                     const speed = 10 + Math.random() * 5;
-                    const size = 10 + Math.random() * 8;
+                    const size = 15 + Math.random() * 12;
                     particles.push(new Particle(emitX, emitY, angle, speed, size));
                 }
             }
@@ -357,7 +357,7 @@ function startAnimationLoop() {
                 const emitY = canvas.height * 0.85;
                 const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
                 const speed = 10 + Math.random() * 5;
-                const size = 10 + Math.random() * 8;
+                const size = 15 + Math.random() * 12;
                 particles.push(new Particle(emitX, emitY, angle, speed, size));
             }
         }
