@@ -335,4 +335,64 @@ input[type="text"] {
 .position-controls input[type="range"] {
     width: 100%;
 }
+
+.logo-controls {
+    text-align: center;
+    margin: 15px 0;
+}
+
+.logo-animate-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.3s;
+}
+
+.logo-animate-btn:hover {
+    background: #45a049;
+}
+
+.logo-animate-btn.active {
+    background: #f44336;
+}
+
+.particles-toggle-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.3s;
+    margin-left: 10px;
+}
+
+.particles-toggle-btn:hover {
+    background: #45a049;
+}
+
+.particles-toggle-btn.active {
+    background: #f44336;
+}
+
+.format-group {
+    margin: 15px 0;
+    padding: 10px;
+    background: rgba(0,0,0,0.05);
+    border-radius: 4px;
+}
+
+.format-group h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+}
+
+.format-group button {
+    margin: 5px;
+}
  

@@ -9,12 +9,18 @@ let animationLoop = null;
 let backgroundElement = null;
 let videoStartTime = 0;
 let videoDuration = 0;
+let logoAnimationActive = false;
+let logoImage = null;
+let logoStartTime = 0;
 
 // Initialize piggy animation
 const piggyGif = new SuperGif({ 
     gif: document.getElementById('piggy-gif'),
     auto_play: false 
 });
+
+// Add crossOrigin to the piggy GIF image
+document.getElementById('piggy-gif').crossOrigin = "anonymous";
 
 // Load the GIF
 piggyGif.load(() => {
@@ -51,6 +57,68 @@ const ZOOM_SPEED = 0.5;
 const MIN_ZOOM = 100;
 const MAX_ZOOM = 115;
 let zoomStartTime = 0;
+
+// Add these at the top with other globals
+let particles = [];
+const PARTICLE_COUNT = 20; // More particles
+const PARTICLE_LIFETIME = 1200; // Longer lifetime
+
+// Add this at the top with other globals
+let logoVisible = true;  // Instead of particlesEnabled
+
+// Add this class to manage individual particles
+class Particle {
+    constructor(x, y, angle, speed, size) {
+        this.x = x;
+        this.y = y;
+        this.startX = x;
+        this.startY = y;
+        this.angle = angle;
+        this.speed = speed;
+        this.size = size;
+        this.lifetime = 0;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.4; // More rotation
+        this.gravity = 0.25;
+        // Adjust velocities for cone shape
+        this.velocityY = -speed * Math.sin(angle) * 2;    // More upward force
+        this.velocityX = speed * Math.cos(angle) * 1.5;   // More horizontal force
+    }
+
+    update(deltaTime) {
+        this.lifetime += deltaTime;
+        this.velocityY += this.gravity;
+        this.x += this.velocityX;
+        this.y += this.velocityY;
+        this.rotation += this.rotationSpeed;
+        return this.lifetime < PARTICLE_LIFETIME;
+    }
+
+    draw(ctx) {
+        const opacity = 1 - (this.lifetime / PARTICLE_LIFETIME);
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        
+        // Draw water droplet
+        ctx.beginPath();
+        ctx.moveTo(0, this.size/2);
+        ctx.bezierCurveTo(
+            -this.size/2, -this.size/2,
+            this.size/2, -this.size/2,
+            0, this.size/2
+        );
+        
+        // Brighter colors and higher opacity for more visibility
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
+        gradient.addColorStop(0, `rgba(150, 220, 255, ${opacity * 0.9})`);  // Brighter blue, higher opacity
+        gradient.addColorStop(1, `rgba(0, 170, 255, ${opacity * 0.5})`);    // More saturated blue, higher opacity
+        
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        ctx.restore();
+    }
+}
 
 function updateDurationDisplay() {
     const loopCount = parseInt(document.getElementById('loop-count').value);
@@ -107,6 +175,7 @@ document.getElementById('background-upload').addEventListener('change', function
     reader.onload = function() {
         if (isVideo) {
             backgroundElement = document.createElement('video');
+            backgroundElement.crossOrigin = "anonymous";
             backgroundElement.loop = true;
             backgroundElement.muted = true;
             backgroundElement.autoplay = true;
@@ -120,6 +189,7 @@ document.getElementById('background-upload').addEventListener('change', function
             };
         } else {
             backgroundElement = new Image();
+            backgroundElement.crossOrigin = "anonymous";
             backgroundElement.src = reader.result;
         }
         
@@ -191,8 +261,9 @@ function startAnimationLoop() {
             // Combine base zoom with animation zoom
             const finalZoom = baseZoom * animationZoom;
             
-            const x = cropX.value / 100;
-            const y = cropY.value / 100;
+            // Get position values from sliders (0-100)
+            const xOffset = parseInt(cropX.value);
+            const yOffset = parseInt(cropY.value);
             
             // Calculate aspect ratio preserving dimensions
             let width, height, offsetX, offsetY;
@@ -205,13 +276,16 @@ function startAnimationLoop() {
             if (mediaRatio > containerRatio) {
                 height = canvas.height * finalZoom;
                 width = height * mediaRatio;
+                // Apply horizontal adjustment
+                offsetX = ((canvas.width - width) * xOffset / 100);
+                offsetY = ((canvas.height - height) * yOffset / 100);
             } else {
                 width = canvas.width * finalZoom;
                 height = width / mediaRatio;
+                // Apply vertical adjustment
+                offsetX = ((canvas.width - width) * xOffset / 100);
+                offsetY = ((canvas.height - height) * yOffset / 100);
             }
-            
-            offsetX = (canvas.width - width) * x;
-            offsetY = (canvas.height - height) * y;
             
             ctx.drawImage(backgroundElement, offsetX, offsetY, width, height);
         }
@@ -224,7 +298,71 @@ function startAnimationLoop() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         drawBackground();
         
-        // Piggy animation is now completely independent
+        // Draw logo before piggy if animation is active
+        if (logoAnimationActive && logoImage) {
+            const now = performance.now();
+            if (!logoStartTime) {
+                logoStartTime = now;
+                particles = [];
+                // Always generate particles
+                const emitX = canvas.width * 0.15;
+                const emitY = canvas.height * 0.85;
+                
+                for (let i = 0; i < PARTICLE_COUNT; i++) {
+                    const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
+                    const speed = 10 + Math.random() * 5;
+                    const size = 10 + Math.random() * 8;
+                    particles.push(new Particle(emitX, emitY, angle, speed, size));
+                }
+            }
+            
+            const elapsed = now - logoStartTime;
+            const duration = 1500;
+            const progress = (elapsed % duration) / duration;
+            
+            // Calculate logo parameters
+            const startX = canvas.width * 0.3;
+            const startY = canvas.height * 0.9;
+            const endX = canvas.width * 0.8;
+            const endY = canvas.height * 0.1;
+            
+            const easeProgress = Math.pow(progress, 0.7);
+            const currentX = startX + (endX - startX) * easeProgress;
+            const currentY = startY + (endY - startY) * easeProgress;
+            
+            const startSize = 180;
+            const endSize = 80;
+            const currentSize = startSize + (endSize - startSize) * easeProgress;
+            
+            const bounce = Math.sin(progress * Math.PI * 4) * 20 * (1 - progress);
+            const startAngle = -45 * (Math.PI / 180);
+            const endAngle = 0;
+            const currentAngle = startAngle + (endAngle - startAngle) * easeProgress;
+            const opacity = progress > 0.9 ? (1 - progress) * 10 : 1;
+            
+            // Draw logo using the separate function
+            drawLogo(ctx, progress, currentX, currentY, currentSize, bounce, currentAngle, opacity);
+
+            // Update and draw particles
+            const deltaTime = elapsed % duration / 60;
+            particles = particles.filter(particle => {
+                const alive = particle.update(deltaTime);
+                if (alive) particle.draw(ctx);
+                return alive;
+            });
+            
+            // Generate new particles
+            if (progress < 0.4 && particles.length < PARTICLE_COUNT && Math.random() < 0.5) {
+                const emitX = canvas.width * 0.15;
+                const emitY = canvas.height * 0.85;
+                const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
+                const speed = 10 + Math.random() * 5;
+                const size = 10 + Math.random() * 8;
+                particles.push(new Particle(emitX, emitY, angle, speed, size));
+            }
+        }
+        
+        // Draw piggy on top
         try {
             const frame = Math.floor((elapsed / FRAME_DURATION) % FRAMES_IN_SEQUENCE);
             piggyGif.move_to(frame);
@@ -249,21 +387,36 @@ async function exportForSticker() {
     const loopCount = parseInt(document.getElementById('loop-count').value);
     const mediaStream = canvas.captureStream();
     
+    // Check if MediaRecorder is available
+    if (typeof MediaRecorder === 'undefined') {
+        alert('Your browser does not support video recording. Please try Chrome or Firefox.');
+        return;
+    }
+    
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     
-    const mimeTypes = isSafari ? 
-        ['video/mp4'] :
-        [
-            'video/webm;codecs=vp9',
-            'video/webm;codecs=vp8',
-            'video/webm',
-            'video/mp4'
-        ];
+    let supportedMimeType;
+    const mimeTypes = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4'
+    ];
     
-    const supportedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+    // Find first supported mime type
+    for (const type of mimeTypes) {
+        try {
+            if (MediaRecorder.isTypeSupported(type)) {
+                supportedMimeType = type;
+                break;
+            }
+        } catch (e) {
+            console.warn('Error checking mime type:', type, e);
+        }
+    }
     
     if (!supportedMimeType) {
-        alert('Video recording not supported in this browser. Please try Chrome, Firefox, or Safari.');
+        alert('No supported video format found. Please try Chrome or Firefox.');
         return;
     }
     
@@ -283,61 +436,82 @@ async function exportForSticker() {
 
     try {
         const isHighQuality = document.getElementById('high-quality').checked;
-        const mediaRecorder = new MediaRecorder(mediaStream, {
-            mimeType: supportedMimeType,
-            videoBitsPerSecond: isHighQuality ? 2000000 : 1000000  // 2Mbps for HQ, 1Mbps for standard
-        });
         
-        const chunks = [];
-        mediaRecorder.ondataavailable = e => chunks.push(e.data);
-        
-        const recordingPromise = new Promise((resolve, reject) => {
-            mediaRecorder.onstop = () => resolve(new Blob(chunks, { type: supportedMimeType }));
-            mediaRecorder.onerror = reject;
-        });
+        // Create blobs for both formats
+        async function createBlob(mimeType) {
+            const mediaRecorder = new MediaRecorder(mediaStream, {
+                mimeType: mimeType,
+                videoBitsPerSecond: isHighQuality ? 2000000 : 1000000
+            });
+            
+            const chunks = [];
+            mediaRecorder.ondataavailable = e => chunks.push(e.data);
+            
+            const recordingPromise = new Promise((resolve, reject) => {
+                mediaRecorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+                mediaRecorder.onerror = reject;
+            });
 
-        mediaRecorder.start();
-        
-        let framesRecorded = 0;
-        const recordFrame = () => {
-            if (framesRecorded >= totalFrames) {
-                mediaRecorder.stop();
-                return;
-            }
-            framesRecorded++;
-            setTimeout(recordFrame, FRAME_DURATION);
-        };
-        recordFrame();
+            mediaRecorder.start();
+            
+            let framesRecorded = 0;
+            const recordFrame = () => {
+                if (framesRecorded >= totalFrames) {
+                    mediaRecorder.stop();
+                    return;
+                }
+                framesRecorded++;
+                setTimeout(recordFrame, FRAME_DURATION);
+            };
+            recordFrame();
 
-        const blob = await recordingPromise;
+            return recordingPromise;
+        }
+
+        // Create both WebM and MP4 versions
+        const webmBlob = await createBlob('video/webm;codecs=vp9');
+        const mp4Blob = await createBlob('video/mp4');
+        
         loadingDiv.remove();
 
-        const url = URL.createObjectURL(blob);
-        const fileExtension = supportedMimeType.includes('webm') ? 'webm' : 'mp4';
-        const fileSize = blob.size / 1024;
+        const webmUrl = URL.createObjectURL(webmBlob);
+        const mp4Url = URL.createObjectURL(mp4Blob);
+        const webmSize = webmBlob.size / 1024;
+        const mp4Size = mp4Blob.size / 1024;
 
         const exportDiv = document.createElement('div');
         exportDiv.className = 'export-dialog';
         
         exportDiv.innerHTML = `
             <h3>Export Sticker</h3>
-            ${fileSize > 256 ? 
-                `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's 256KB limit!</p>` 
+            ${(webmSize > 256 || mp4Size > 256) ? 
+                `<p class="size-warning">Warning: File size exceeds Telegram's 256KB limit!</p>` 
                 : ''}
-            <button onclick="downloadSticker('${url}', 'telegram', '${fileExtension}');this.parentElement.remove()">
-                Download for Telegram (${fileExtension.toUpperCase()})
-            </button>
-            <button onclick="downloadSticker('${url}', 'discord', '${fileExtension}');this.parentElement.remove()">
-                Download for Discord (${fileExtension.toUpperCase()})
-            </button>
-            ${fileSize > 256 ? `
-                <button onclick="compressAndExport(${fileSize})">
+            <div class="format-group">
+                <h4>WebM Format (${webmSize.toFixed(1)}KB)</h4>
+                <button onclick="downloadSticker('${webmUrl}', 'telegram', 'webm')">
+                    Download for Telegram
+                </button>
+                <button onclick="downloadSticker('${webmUrl}', 'discord', 'webm')">
+                    Download for Discord
+                </button>
+            </div>
+            <div class="format-group">
+                <h4>MP4 Format (${mp4Size.toFixed(1)}KB)</h4>
+                <button onclick="downloadSticker('${mp4Url}', 'telegram', 'mp4')">
+                    Download for Telegram
+                </button>
+                <button onclick="downloadSticker('${mp4Url}', 'discord', 'mp4')">
+                    Download for Discord
+                </button>
+            </div>
+            ${(webmSize > 256 || mp4Size > 256) ? `
+                <button onclick="compressAndExport(${Math.min(webmSize, mp4Size)})">
                     Try Compress (Experimental)
                 </button>
             ` : ''}
             <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
             <p style="font-size: 12px; margin-top: 10px;">
-                File size: ${fileSize.toFixed(1)}KB<br>
                 Telegram limit: 256KB<br>
                 Discord limit: 500KB
             </p>
@@ -456,3 +630,68 @@ document.getElementById('loop-count').addEventListener('input', function() {
     }
     updateDurationDisplay();
 });
+
+// Load the logo image
+function loadLogoImage() {
+    logoImage = new Image();
+    logoImage.crossOrigin = "anonymous";
+    logoImage.src = 'https://res.cloudinary.com/dakoxedxt/image/upload/v1734964113/SQUIRTww_ltlzuv.png';
+    return new Promise((resolve) => {
+        logoImage.onload = resolve;
+    });
+}
+
+// Call this when page loads
+loadLogoImage();
+
+function toggleLogoAnimation() {
+    logoAnimationActive = !logoAnimationActive;
+    const btn = document.querySelector('.logo-animate-btn');
+    const statusSpan = btn.querySelector('.logo-status');
+    
+    if (logoAnimationActive) {
+        btn.classList.add('active');
+        statusSpan.textContent = '⏹ Remove SQUIRT';
+        logoStartTime = 0;
+        // Reset particles when animation starts
+        particles = [];
+    } else {
+        btn.classList.remove('active');
+        statusSpan.textContent = '🌊 Add SQUIRT';
+        // Clear particles when animation stops
+        particles = [];
+    }
+}
+
+// Modify the toggle function to control the logo visibility
+function toggleParticles() {
+    logoVisible = !logoVisible;
+    const btn = document.querySelector('.particles-toggle-btn');
+    const statusSpan = btn.querySelector('.particles-status');
+    
+    if (logoVisible) {
+        btn.classList.add('active');
+        statusSpan.textContent = '💧 Hide Logo';
+    } else {
+        btn.classList.remove('active');
+        statusSpan.textContent = '💧 Show Logo';
+    }
+}
+
+// Add this function to handle logo drawing
+function drawLogo(ctx, progress, currentX, currentY, currentSize, bounce, currentAngle, opacity) {
+    if (!logoVisible) return;  // Skip drawing if logo is hidden
+    
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    ctx.translate(currentX, currentY + bounce);
+    ctx.rotate(currentAngle);
+    ctx.drawImage(
+        logoImage,
+        -currentSize/2,
+        -currentSize/2,
+        currentSize,
+        currentSize
+    );
+    ctx.restore();
+}
