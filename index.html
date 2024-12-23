@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animation Overlay</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/gh/buzzfeed/libgif-js@master/libgif.js"></script>
+</head>
+<body>
+    <video id="bg-video" autoplay muted loop playsinline>
+        <source src="https://res.cloudinary.com/dakoxedxt/video/upload/v1734955984/spin0001-0250_xdkgdd.mp4" type="video/mp4">
+    </video>
+    <div class="container">
+        <!-- Hidden container for GIF processing -->
+        <div style="display:none;">
+            <img id="piggy-gif" src="https://res.cloudinary.com/dakoxedxt/image/upload/v1734954084/PIGGYTRANSP_in0zkv.gif" rel:animated_src="https://res.cloudinary.com/dakoxedxt/image/upload/v1734954084/PIGGYTRANSP_in0zkv.gif" />
+        </div>
+        <div class="preview-container">
+            <canvas id="preview-canvas" width="512" height="512"></canvas>
+        </div>
+        
+        <div class="controls">
+            <div class="upload-controls">
+                <div class="upload-section">
+                    <label>Upload Background:</label>
+                    <input type="file" id="background-upload" accept="image/*,video/*">
+                </div>
+            </div>
+            <div class="adjustment-controls">
+                <div class="speed-controls">
+                    <label>Animation Speed: <span id="speed-info">normal</span></label>
+                    <div class="speed-buttons">
+                        <button onclick="setSpeed('smooth')">Smooth</button>
+                        <button onclick="setSpeed('normal')">Normal</button>
+                        <button onclick="setSpeed('squirtaholic')">Squirtaholic</button>
+                    </div>
+                </div>
+                <div class="video-timing">
+                    <div class="time-display">
+                        Duration: <span id="duration-display">0.0s</span>
+                    </div>
+                    <div class="start-frame-control" style="display: none;">
+                        <label>Video Start Point:</label>
+                        <input type="range" id="start-frame" min="0" max="100" value="0">
+                        <span id="start-time-display">0.0s</span>
+                    </div>
+                </div>
+                <div class="loop-controls">
+                    <label>
+                        Number of Loops:
+                        <input type="number" id="loop-count" min="1" max="24" value="1">
+                    </label>
+                </div>
+                <div class="slider-group">
+                    <label>Zoom</label>
+                    <input type="range" id="zoom" min="100" max="300" value="100">
+                </div>
+                <div class="position-controls">
+                    <input type="range" id="crop-x" min="0" max="100" value="50">
+                    <input type="range" id="crop-y" min="0" max="100" value="50">
+                </div>
+            </div>
+            <button onclick="exportForSticker()">Export Sticker</button>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html> 
