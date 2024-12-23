@@ -194,15 +194,27 @@ input[type="number"] {
 }
 
 .loop-controls {
-    margin: 15px 0;
     text-align: center;
+    margin: 15px 0;
+    width: 100%;
+    max-width: 300px;
+    margin: 15px auto;
 }
 
-.loop-controls input {
-    width: 60px;
-    padding: 5px;
-    margin-left: 10px;
-    text-align: center;
+.loop-controls input[type="range"] {
+    width: 100%;
+    margin: 10px 0;
+}
+
+.loop-controls label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 14px;
+}
+
+#loop-count-display {
+    font-weight: bold;
+    color: #007bff;
 }
 
 .video-timing {
