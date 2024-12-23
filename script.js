@@ -406,113 +406,65 @@ async function exportForSticker() {
         loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Please wait...</p>';
         document.body.appendChild(loadingDiv);
 
-        // Function to create a recording with specific mime type
-        async function createRecording(mimeType) {
-            try {
-                if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    return null;
-                }
+        // Set bitrate based on quality setting
+        const isHighQuality = document.getElementById('high-quality').checked;
+        const options = {
+            videoBitsPerSecond: isHighQuality ? 2000000 : 1000000  // 2Mbps for HQ, 1Mbps for normal
+        };
 
-                const recorder = new MediaRecorder(mediaStream, {
-                    mimeType: mimeType,
-                    videoBitsPerSecond: 2000000
-                });
+        // Create recording with quality options
+        const recorder = new MediaRecorder(mediaStream, options);
 
-                const chunks = [];
-                recorder.ondataavailable = e => chunks.push(e.data);
+        const chunks = [];
+        recorder.ondataavailable = e => chunks.push(e.data);
 
-                const recordingPromise = new Promise((resolve, reject) => {
-                    recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
-                    recorder.onerror = reject;
-                });
+        const recordingPromise = new Promise((resolve, reject) => {
+            recorder.onstop = () => resolve(new Blob(chunks));
+            recorder.onerror = reject;
+        });
 
-                recorder.start();
-                
-                let framesRecorded = 0;
-                const recordFrame = () => {
-                    if (framesRecorded >= totalFrames) {
-                        recorder.stop();
-                        return;
-                    }
-                    framesRecorded++;
-                    setTimeout(recordFrame, FRAME_DURATION);
-                };
-                recordFrame();
-
-                return await recordingPromise;
-            } catch (e) {
-                console.warn(`Failed to record ${mimeType}:`, e);
-                return null;
+        recorder.start();
+        
+        let framesRecorded = 0;
+        const recordFrame = () => {
+            if (framesRecorded >= totalFrames) {
+                recorder.stop();
+                return;
             }
-        }
+            framesRecorded++;
+            setTimeout(recordFrame, FRAME_DURATION);
+        };
+        recordFrame();
 
-        // Try to create both formats
-        const webmBlob = await createRecording('video/webm;codecs=vp9');
-        const mp4Blob = await createRecording('video/mp4');
-
+        const blob = await recordingPromise;
         loadingDiv.remove();
 
-        if (!webmBlob && !mp4Blob) {
-            throw new Error('No supported video format found');
-        }
+        const url = URL.createObjectURL(blob);
+        const fileSize = blob.size / 1024;
 
         // Create export dialog
         const exportDiv = document.createElement('div');
         exportDiv.className = 'export-dialog';
         
-        let dialogContent = '<h3>Export Sticker</h3>';
-
-        // Add WebM section if available
-        if (webmBlob) {
-            const webmUrl = URL.createObjectURL(webmBlob);
-            const webmSize = webmBlob.size / 1024;
-            dialogContent += `
-                <div class="format-group">
-                    <h4>WebM Format (${webmSize.toFixed(1)}KB)</h4>
-                    ${webmSize > 256 ? '<p class="size-warning">Exceeds Telegram limit!</p>' : ''}
-                    <button onclick="downloadSticker('${webmUrl}', 'telegram', 'webm')">
-                        Download for Telegram
-                    </button>
-                    <button onclick="downloadSticker('${webmUrl}', 'discord', 'webm')">
-                        Download for Discord
-                    </button>
-                </div>
-            `;
-        }
-
-        // Add MP4 section if available
-        if (mp4Blob) {
-            const mp4Url = URL.createObjectURL(mp4Blob);
-            const mp4Size = mp4Blob.size / 1024;
-            dialogContent += `
-                <div class="format-group">
-                    <h4>MP4 Format (${mp4Size.toFixed(1)}KB)</h4>
-                    ${mp4Size > 256 ? '<p class="size-warning">Exceeds Telegram limit!</p>' : ''}
-                    <button onclick="downloadSticker('${mp4Url}', 'telegram', 'mp4')">
-                        Download for Telegram
-                    </button>
-                    <button onclick="downloadSticker('${mp4Url}', 'discord', 'mp4')">
-                        Download for Discord
-                    </button>
-                </div>
-            `;
-        }
-
-        // Add compression option if needed
-        const smallestSize = Math.min(
-            webmBlob ? webmBlob.size / 1024 : Infinity,
-            mp4Blob ? mp4Blob.size / 1024 : Infinity
-        );
-        
-        if (smallestSize > 256) {
-            dialogContent += `
-                <button onclick="compressAndExport(${smallestSize})">
+        exportDiv.innerHTML = `
+            <h3>Export Sticker</h3>
+            ${fileSize > 256 ? 
+                `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's 256KB limit!</p>` 
+                : ''}
+            <div class="format-group">
+                <h4>MP4 Format (${fileSize.toFixed(1)}KB)</h4>
+                <button onclick="downloadSticker('${url}', 'telegram', 'mp4')">
+                    Download for Telegram
+                </button>
+                <button onclick="downloadSticker('${url}', 'discord', 'mp4')">
+                    Download for Discord
+                </button>
+            </div>
+            ${fileSize > 256 ? `
+                <button onclick="compressAndExport(${fileSize})">
                     Try Compress (Experimental)
                 </button>
-            `;
-        }
-
-        dialogContent += `
+            ` : ''}
             <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
             <p style="font-size: 12px; margin-top: 10px;">
                 Telegram limit: 256KB<br>
@@ -520,7 +472,6 @@ async function exportForSticker() {
             </p>
         `;
 
-        exportDiv.innerHTML = dialogContent;
         document.body.appendChild(exportDiv);
 
     } catch (error) {
@@ -558,7 +509,6 @@ async function compressAndExport(originalSize) {
         
         const mediaStream = compressedCanvas.captureStream();
         const mediaRecorder = new MediaRecorder(mediaStream, {
-            mimeType: 'video/webm;codecs=vp9',
             videoBitsPerSecond: dims.bitrate
         });
 
@@ -566,14 +516,14 @@ async function compressAndExport(originalSize) {
         mediaRecorder.ondataavailable = e => chunks.push(e.data);
         
         const blob = await new Promise(resolve => {
-            mediaRecorder.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
+            mediaRecorder.onstop = () => resolve(new Blob(chunks));
             mediaRecorder.start();
             setTimeout(() => mediaRecorder.stop(), 100);
         });
 
         if (blob.size / 1024 <= 256) {
             const url = URL.createObjectURL(blob);
-            downloadSticker(url, 'telegram_compressed', 'webm');
+            downloadSticker(url, 'telegram_compressed', 'mp4');
             alert(`Successfully compressed from ${originalSize.toFixed(1)}KB to ${(blob.size/1024).toFixed(1)}KB`);
             return;
         }
