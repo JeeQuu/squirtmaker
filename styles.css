@@ -516,4 +516,47 @@ input[type="range"]::-moz-range-track {
     z-index: 1000;
     box-shadow: 0 0 10px rgba(0,0,0,0.2);
 }
+
+.quality-settings {
+    margin: 15px 0;
+    padding: 15px;
+    background: rgba(0,0,0,0.05);
+    border-radius: 5px;
+}
+
+.quality-settings select {
+    width: 100%;
+    padding: 8px;
+    margin: 10px 0;
+    border-radius: 4px;
+}
+
+.quality-settings h4 {
+    margin: 0;
+    font-size: 14px;
+    color: #666;
+}
+
+#custom-bitrate {
+    margin: 10px 0;
+    padding: 10px;
+    background: rgba(0,0,0,0.03);
+    border-radius: 4px;
+}
+
+#custom-bitrate input {
+    width: 120px;
+    padding: 5px;
+    margin-left: 10px;
+}
+
+.bitrate-info {
+    font-size: 12px;
+    color: #666;
+    margin-top: 10px;
+}
+
+.export-buttons {
+    margin-top: 15px;
+}
  

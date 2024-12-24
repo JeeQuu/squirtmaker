@@ -49,6 +49,12 @@ const CONFIG = {
             MAX_HEIGHT: 512,
             QUALITY: 10 // Lower means better quality but larger file
         }
+    },
+    BITRATES: {
+        AUTO: 'auto',
+        TELEGRAM: 'telegram',
+        DISCORD: 'discord',
+        CUSTOM: 'custom'
     }
 };
 
@@ -444,11 +450,60 @@ async function exportForSticker() {
     exportDiv.className = 'export-dialog';
     exportDiv.innerHTML = `
         <h3>Choose Export Format</h3>
-        <button onclick="exportAsGif()">Export as GIF</button>
-        <button onclick="exportAsVideo()">Export as Video</button>
+        <div class="quality-settings">
+            <h4>Quality Settings</h4>
+            <select id="quality-preset" onchange="updateQualityControls()">
+                <option value="${CONFIG.BITRATES.AUTO}">Auto (Telegram Safe)</option>
+                <option value="${CONFIG.BITRATES.TELEGRAM}">Telegram Optimized</option>
+                <option value="${CONFIG.BITRATES.DISCORD}">Discord High Quality</option>
+                <option value="${CONFIG.BITRATES.CUSTOM}">Custom</option>
+            </select>
+            <div id="custom-bitrate" style="display: none;">
+                <label>Custom Bitrate (bps):
+                    <input type="number" 
+                           id="custom-bitrate-value" 
+                           min="100000" 
+                           max="4000000" 
+                           step="100000" 
+                           value="1500000"
+                           onchange="updateQualityControls()">
+                </label>
+            </div>
+            <div class="bitrate-info">
+                <span id="bitrate-display"></span>
+            </div>
+        </div>
+        <div class="export-buttons">
+            <button onclick="exportAsGif()">Export as GIF</button>
+            <button onclick="exportAsVideo()">Export as Video</button>
+        </div>
         <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
     `;
     document.body.appendChild(exportDiv);
+    
+    // Initialize quality controls after the elements are added to the DOM
+    setTimeout(() => updateQualityControls(), 0);
+}
+
+function calculateOptimalBitrate(duration) {
+    // Telegram limit is 256KB
+    const MAX_SIZE_BYTES = 256 * 1024;
+    // Target size in bits (multiply by 8)
+    const TARGET_SIZE_BITS = MAX_SIZE_BYTES * 8;
+    
+    // VP9 typically achieves better compression than our estimates
+    // So we'll increase our target to compensate
+    const COMPRESSION_COMPENSATION = 2.2; // Adjust based on observed results
+    
+    // Calculate target bitrate (bits/second)
+    const targetBitrate = Math.floor((TARGET_SIZE_BITS / duration) * COMPRESSION_COMPENSATION);
+    
+    console.log('Duration:', duration, 
+                'Target size (KB):', MAX_SIZE_BYTES / 1024, 
+                'Compensated bitrate:', targetBitrate,
+                'Estimated final size (KB):', ((targetBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION).toFixed(1));
+    
+    return targetBitrate;
 }
 
 async function exportAsVideo() {
@@ -456,6 +511,7 @@ async function exportAsVideo() {
     const loopCount = parseInt(document.getElementById('loop-count').value);
     const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
     const duration = (FRAME_DURATION * totalFrames) / 1000;
+    const optimalBitrate = calculateOptimalBitrate(duration);
     
     try {
         const mediaStream = canvas.captureStream(30);
@@ -467,7 +523,7 @@ async function exportAsVideo() {
 
         const options = {
             mimeType: getSupportedMimeType(),
-            videoBitsPerSecond: document.getElementById('high-quality').checked ? 2000000 : 1000000
+            videoBitsPerSecond: getBitrateForExport()
         };
 
         const recorder = new MediaRecorder(mediaStream, options);
@@ -891,4 +947,82 @@ async function exportAsGif() {
         loadingDiv.remove();
         alert(`Failed to export GIF: ${error.message}`);
     }
+}
+
+// Add this function to handle quality control updates
+function updateQualityControls() {
+    console.log('Updating quality controls...');
+    const preset = document.getElementById('quality-preset').value;
+    const customControls = document.getElementById('custom-bitrate');
+    const bitrateDisplay = document.getElementById('bitrate-display');
+    
+    customControls.style.display = preset === CONFIG.BITRATES.CUSTOM ? 'block' : 'none';
+    
+    const duration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * 
+        parseInt(document.getElementById('loop-count').value)) / 1000;
+    
+    const COMPRESSION_COMPENSATION = 2.2;
+    let estimatedBitrate;
+    switch(preset) {
+        case CONFIG.BITRATES.AUTO:
+            estimatedBitrate = calculateOptimalBitrate(duration);
+            const autoSize = (estimatedBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION;
+            bitrateDisplay.textContent = `Auto: ${(estimatedBitrate/1000).toFixed(0)}Kbps (≈${autoSize.toFixed(1)}KB)`;
+            break;
+        case CONFIG.BITRATES.TELEGRAM:
+            estimatedBitrate = Math.max(2500000, Math.min(duration <= 1.5 ? 4000000 : 3000000, calculateOptimalBitrate(duration)));
+            const telegramSize = (estimatedBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION;
+            bitrateDisplay.textContent = `Telegram: ${(estimatedBitrate/1000).toFixed(0)}Kbps (≈${telegramSize.toFixed(1)}KB)`;
+            break;
+        case CONFIG.BITRATES.DISCORD:
+            estimatedBitrate = 4000000;
+            const discordSize = (estimatedBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION;
+            bitrateDisplay.textContent = `Discord: ${(estimatedBitrate/1000).toFixed(0)}Kbps (≈${discordSize.toFixed(1)}KB)`;
+            break;
+        case CONFIG.BITRATES.CUSTOM:
+            estimatedBitrate = parseInt(document.getElementById('custom-bitrate-value').value);
+            const customSize = (estimatedBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION;
+            bitrateDisplay.textContent = `Custom: ${(estimatedBitrate/1000).toFixed(0)}Kbps (≈${customSize.toFixed(1)}KB)`;
+            break;
+    }
+}
+
+// Update getBitrateForExport to use new quality settings
+function getBitrateForExport() {
+    console.log('Getting bitrate for export...');
+    const preset = document.getElementById('quality-preset').value;
+    
+    const duration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * 
+        parseInt(document.getElementById('loop-count').value)) / 1000;
+    
+    let bitrate;
+    switch(preset) {
+        case CONFIG.BITRATES.AUTO:
+            bitrate = calculateOptimalBitrate(duration);
+            break;
+        case CONFIG.BITRATES.TELEGRAM:
+            const calculatedBitrate = calculateOptimalBitrate(duration);
+            // Increase minimum bitrate for better quality
+            const minBitrate = 2500000; // Increased from 1500000
+            // Allow higher maximum for short animations
+            const maxBitrate = duration <= 1.5 ? 4000000 : 3000000;
+            bitrate = Math.max(minBitrate, Math.min(maxBitrate, calculatedBitrate));
+            break;
+        case CONFIG.BITRATES.DISCORD:
+            bitrate = 4000000; // Increased for better quality
+            break;
+        case CONFIG.BITRATES.CUSTOM:
+            bitrate = parseInt(document.getElementById('custom-bitrate-value').value);
+            break;
+        default:
+            bitrate = calculateOptimalBitrate(duration);
+    }
+    
+    // Adjust the estimated size calculation to match our compression compensation
+    const COMPRESSION_COMPENSATION = 2.2;
+    const estimatedSize = (bitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION;
+    console.log('Selected bitrate:', bitrate, 
+                'Duration:', duration,
+                'Estimated size (KB):', estimatedSize.toFixed(1));
+    return bitrate;
 }
