@@ -259,8 +259,10 @@ input[type="number"] {
 }
 
 .export-dialog button {
-    margin: 5px;
-    padding: 8px 16px;
+    display: block;
+    width: 100%;
+    margin: 10px 0;
+    padding: 12px;
     border: none;
     border-radius: 5px;
     background: #007bff;
@@ -500,5 +502,18 @@ input[type="range"]::-moz-range-track {
     background: #ddd;
     border-radius: 4px;
     cursor: pointer;
+}
+
+.loading {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255, 255, 255, 0.9);
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    z-index: 1000;
+    box-shadow: 0 0 10px rgba(0,0,0,0.2);
 }
  

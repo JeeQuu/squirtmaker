@@ -6,6 +6,9 @@
     <title>Animation Overlay</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/gh/buzzfeed/libgif-js@master/libgif.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/jnordberg/gif.js/dist/gif.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/jnordberg/gif.js/dist/gif.worker.js"></script>
+    <link rel="icon" type="image/x-icon" href="data:image/x-icon;,">
     <style>
         .loading {
             position: fixed;
@@ -106,7 +109,12 @@
                     </button>
                 </div>
             </div>
-            <button onclick="exportForSticker()">Export Sticker</button>
+            <button 
+                aria-label="Export sticker"
+                role="button"
+                onclick="exportForSticker()">
+                Export Sticker
+            </button>
         </div>
     </div>
     <script src="script.js"></script>

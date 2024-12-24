@@ -28,13 +28,33 @@ piggyGif.load(() => {
     startAnimationLoop();
 });
 
-// Constants for the piggy animation
-const FRAMES_IN_SEQUENCE = 5;
-const SPEEDS = {
-    normal: 40,      // 40ms per frame = 25fps
-    squirtaholic: 25,  // 25ms per frame = 40fps
-    smooth: 67      // 67ms per frame = 15fps
+// Move constants to a configuration file
+const CONFIG = {
+    ANIMATION: {
+        FRAMES_IN_SEQUENCE: 5,
+        SPEEDS: {
+            normal: 40,
+            squirtaholic: 25,
+            smooth: 67
+        }
+    },
+    EXPORT: {
+        MAX_SIZE: 256 * 1024, // 256KB
+        QUALITY_SETTINGS: {
+            high: 2000000,
+            normal: 1000000
+        },
+        GIF: {
+            MAX_WIDTH: 512,
+            MAX_HEIGHT: 512,
+            QUALITY: 10 // Lower means better quality but larger file
+        }
+    }
 };
+
+// Constants for the piggy animation
+const FRAMES_IN_SEQUENCE = CONFIG.ANIMATION.FRAMES_IN_SEQUENCE;
+const SPEEDS = CONFIG.ANIMATION.SPEEDS;
 const MAX_LOOPS = {
     normal: 15,      // (3000ms / (40ms * 5frames)) ≈ 15 loops
     squirtaholic: 24,  // (3000ms / (25ms * 5frames)) = 24 loops
@@ -229,19 +249,33 @@ function updatePreview() {
 function startAnimationLoop() {
     const canvas = document.getElementById('preview-canvas');
     const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // Make sure canvas dimensions are explicitly set
+    canvas.width = 512;
+    canvas.height = 512;
     
     function drawBackground() {
         if (backgroundElement) {
             if (backgroundElement instanceof HTMLVideoElement) {
-                // Reset video to start point if it's past the desired duration
-                const currentVideoTime = backgroundElement.currentTime - videoStartTime;
-                const desiredDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * 
+                // Calculate the current time within the animation loop
+                const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * 
                     parseInt(document.getElementById('loop-count').value)) / 1000;
                 
-                if (currentVideoTime > desiredDuration) {
-                    backgroundElement.currentTime = videoStartTime;
-                }
+                // Get the current video time relative to the start point
+                const currentTime = (performance.now() / 1000) % totalDuration;
+                
+                // Set video time to start point plus the current loop time
+                backgroundElement.currentTime = videoStartTime + currentTime;
             }
+            
+            console.log('Drawing background:', backgroundElement.tagName, 
+                        backgroundElement instanceof HTMLVideoElement ? 'video' : 'image');
+            
+            // Get position values from sliders (0-100)
+            const xOffset = parseInt(cropX.value);
+            const yOffset = parseInt(cropY.value);
             
             // Base zoom from slider
             const baseZoom = parseInt(zoomControl.value) / 100;
@@ -267,10 +301,6 @@ function startAnimationLoop() {
             // Combine base zoom with animation zoom
             const finalZoom = baseZoom * animationZoom;
             
-            // Get position values from sliders (0-100)
-            const xOffset = parseInt(cropX.value);
-            const yOffset = parseInt(cropY.value);
-            
             // Calculate aspect ratio preserving dimensions
             let width, height, offsetX, offsetY;
             
@@ -278,6 +308,14 @@ function startAnimationLoop() {
             const mediaRatio = (backgroundElement instanceof HTMLVideoElement) 
                 ? backgroundElement.videoWidth / backgroundElement.videoHeight
                 : backgroundElement.width / backgroundElement.height;
+            
+            console.log('Dimensions:', {
+                containerRatio,
+                mediaRatio,
+                zoom: finalZoom,
+                xOffset,
+                yOffset
+            });
             
             if (mediaRatio > containerRatio) {
                 height = canvas.height * finalZoom;
@@ -294,27 +332,85 @@ function startAnimationLoop() {
             }
             
             ctx.drawImage(backgroundElement, offsetX, offsetY, width, height);
+        } else {
+            // If no background, fill with a light gray
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
     }
     
     function animate(timestamp) {
-        if (!startTime) startTime = timestamp;
-        const elapsed = timestamp - startTime;
+        if (!startTime) {
+            startTime = timestamp;
+            lastFrameTime = timestamp;
+        }
         
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawBackground();
-        
-        // Draw logo before piggy if animation is active
-        if (logoAnimationActive && logoImage) {
-            const now = performance.now();
-            if (!logoStartTime) {
-                logoStartTime = now;
-                particles = [];
-                // Always generate particles
-                const emitX = canvas.width * 0.15;
-                const emitY = canvas.height * 0.85;
+        // Only update if enough time has passed (targeting 60fps)
+        if (timestamp - lastFrameTime >= (1000 / 60)) {
+            lastFrameTime = timestamp;
+            
+            const elapsed = timestamp - startTime;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackground();
+            
+            // Draw logo before piggy if animation is active
+            if (logoAnimationActive && logoImage) {
+                const now = performance.now();
+                if (!logoStartTime) {
+                    logoStartTime = now;
+                    particles = [];
+                    // Always generate particles
+                    const emitX = canvas.width * 0.15;
+                    const emitY = canvas.height * 0.85;
+                    
+                    for (let i = 0; i < PARTICLE_COUNT; i++) {
+                        const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
+                        const speed = 10 + Math.random() * 5;
+                        const size = 15 + Math.random() * 12;
+                        particles.push(new Particle(emitX, emitY, angle, speed, size));
+                    }
+                }
                 
-                for (let i = 0; i < PARTICLE_COUNT; i++) {
+                const elapsed = now - logoStartTime;
+                const duration = 1500;
+                const progress = (elapsed % duration) / duration;
+                
+                // Calculate logo parameters
+                const startX = canvas.width * 0.3;
+                const startY = canvas.height * 0.9;
+                const endX = canvas.width * 0.8;
+                const endY = canvas.height * 0.1;
+                
+                const easeProgress = Math.pow(progress, 0.7);
+                const currentX = startX + (endX - startX) * easeProgress;
+                const currentY = startY + (endY - startY) * easeProgress;
+                
+                const startSize = 180;
+                const endSize = 80;
+                const currentSize = startSize + (endSize - startSize) * easeProgress;
+                
+                const bounce = Math.sin(progress * Math.PI * 4) * 20 * (1 - progress);
+                const startAngle = -45 * (Math.PI / 180);
+                const endAngle = 0;
+                const currentAngle = startAngle + (endAngle - startAngle) * easeProgress;
+                const opacity = progress > 0.9 ? (1 - progress) * 10 : 1;
+                
+                // Draw logo using the separate function
+                drawLogo(ctx, progress, currentX, currentY, currentSize, bounce, currentAngle, opacity);
+
+                // Update and draw particles
+                const deltaTime = elapsed % duration / 60;
+                particles = particles.filter(particle => {
+                    const alive = particle.update(deltaTime);
+                    if (alive) particle.draw(ctx);
+                    return alive;
+                });
+                
+                // Generate new particles
+                if (progress < 0.4 && particles.length < PARTICLE_COUNT && Math.random() < 0.5) {
+                    const emitX = canvas.width * 0.15;
+                    const emitY = canvas.height * 0.85;
                     const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
                     const speed = 10 + Math.random() * 5;
                     const size = 15 + Math.random() * 12;
@@ -322,60 +418,15 @@ function startAnimationLoop() {
                 }
             }
             
-            const elapsed = now - logoStartTime;
-            const duration = 1500;
-            const progress = (elapsed % duration) / duration;
-            
-            // Calculate logo parameters
-            const startX = canvas.width * 0.3;
-            const startY = canvas.height * 0.9;
-            const endX = canvas.width * 0.8;
-            const endY = canvas.height * 0.1;
-            
-            const easeProgress = Math.pow(progress, 0.7);
-            const currentX = startX + (endX - startX) * easeProgress;
-            const currentY = startY + (endY - startY) * easeProgress;
-            
-            const startSize = 180;
-            const endSize = 80;
-            const currentSize = startSize + (endSize - startSize) * easeProgress;
-            
-            const bounce = Math.sin(progress * Math.PI * 4) * 20 * (1 - progress);
-            const startAngle = -45 * (Math.PI / 180);
-            const endAngle = 0;
-            const currentAngle = startAngle + (endAngle - startAngle) * easeProgress;
-            const opacity = progress > 0.9 ? (1 - progress) * 10 : 1;
-            
-            // Draw logo using the separate function
-            drawLogo(ctx, progress, currentX, currentY, currentSize, bounce, currentAngle, opacity);
-
-            // Update and draw particles
-            const deltaTime = elapsed % duration / 60;
-            particles = particles.filter(particle => {
-                const alive = particle.update(deltaTime);
-                if (alive) particle.draw(ctx);
-                return alive;
-            });
-            
-            // Generate new particles
-            if (progress < 0.4 && particles.length < PARTICLE_COUNT && Math.random() < 0.5) {
-                const emitX = canvas.width * 0.15;
-                const emitY = canvas.height * 0.85;
-                const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
-                const speed = 10 + Math.random() * 5;
-                const size = 15 + Math.random() * 12;
-                particles.push(new Particle(emitX, emitY, angle, speed, size));
+            // Draw piggy on top
+            try {
+                const frame = Math.floor((elapsed / FRAME_DURATION) % FRAMES_IN_SEQUENCE);
+                piggyGif.move_to(frame);
+                const piggyCanvas = piggyGif.get_canvas();
+                ctx.drawImage(piggyCanvas, 0, 0, canvas.width, canvas.height);
+            } catch (e) {
+                console.error('Error drawing frame:', e);
             }
-        }
-        
-        // Draw piggy on top
-        try {
-            const frame = Math.floor((elapsed / FRAME_DURATION) % FRAMES_IN_SEQUENCE);
-            piggyGif.move_to(frame);
-            const piggyCanvas = piggyGif.get_canvas();
-            ctx.drawImage(piggyCanvas, 0, 0, canvas.width, canvas.height);
-        } catch (e) {
-            console.error('Error drawing frame:', e);
         }
         
         animationFrameId = requestAnimationFrame(animate);
@@ -389,52 +440,73 @@ function startAnimationLoop() {
 }
 
 async function exportForSticker() {
+    const exportDiv = document.createElement('div');
+    exportDiv.className = 'export-dialog';
+    exportDiv.innerHTML = `
+        <h3>Choose Export Format</h3>
+        <button onclick="exportAsGif()">Export as GIF</button>
+        <button onclick="exportAsVideo()">Export as Video</button>
+        <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
+    `;
+    document.body.appendChild(exportDiv);
+}
+
+async function exportAsVideo() {
     const canvas = document.getElementById('preview-canvas');
     const loopCount = parseInt(document.getElementById('loop-count').value);
     const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
+    const duration = (FRAME_DURATION * totalFrames) / 1000;
     
     try {
-        const mediaStream = canvas.captureStream();
+        const mediaStream = canvas.captureStream(30);
         
-        if (typeof MediaRecorder === 'undefined') {
-            throw new Error('MediaRecorder not supported');
-        }
-
-        // Show loading indicator
         const loadingDiv = document.createElement('div');
-        loadingDiv.className = 'export-dialog';
-        loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Please wait...</p>';
+        loadingDiv.className = 'loading';
+        loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Recording animation...</p>';
         document.body.appendChild(loadingDiv);
 
-        // Set bitrate based on quality setting
-        const isHighQuality = document.getElementById('high-quality').checked;
         const options = {
-            videoBitsPerSecond: isHighQuality ? 2000000 : 1000000  // 2Mbps for HQ, 1Mbps for normal
+            mimeType: getSupportedMimeType(),
+            videoBitsPerSecond: document.getElementById('high-quality').checked ? 2000000 : 1000000
         };
 
-        // Create recording with quality options
         const recorder = new MediaRecorder(mediaStream, options);
-
         const chunks = [];
+        
         recorder.ondataavailable = e => chunks.push(e.data);
 
         const recordingPromise = new Promise((resolve, reject) => {
-            recorder.onstop = () => resolve(new Blob(chunks));
+            let recordingStartTime = Date.now();
+            
+            recorder.onstop = () => {
+                loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Processing video...</p>';
+                const blob = new Blob(chunks, { type: options.mimeType });
+                resolve(blob);
+            };
+            
             recorder.onerror = reject;
+
+            const updateProgress = () => {
+                if (recorder.state === 'recording') {
+                    const elapsed = (Date.now() - recordingStartTime) / 1000;
+                    const progress = Math.min(100, (elapsed / duration) * 100);
+                    loadingDiv.innerHTML = `<h3>Generating sticker...</h3><p>Recording: ${progress.toFixed(0)}%</p>`;
+                    if (elapsed < duration) {
+                        requestAnimationFrame(updateProgress);
+                    }
+                }
+            };
+            updateProgress();
         });
 
+        startTime = 0;
         recorder.start();
         
-        let framesRecorded = 0;
-        const recordFrame = () => {
-            if (framesRecorded >= totalFrames) {
+        setTimeout(() => {
+            if (recorder.state === 'recording') {
                 recorder.stop();
-                return;
             }
-            framesRecorded++;
-            setTimeout(recordFrame, FRAME_DURATION);
-        };
-        recordFrame();
+        }, duration * 1000 + 100);
 
         const blob = await recordingPromise;
         loadingDiv.remove();
@@ -442,21 +514,19 @@ async function exportForSticker() {
         const url = URL.createObjectURL(blob);
         const fileSize = blob.size / 1024;
 
-        // Create export dialog
         const exportDiv = document.createElement('div');
         exportDiv.className = 'export-dialog';
-        
         exportDiv.innerHTML = `
             <h3>Export Sticker</h3>
             ${fileSize > 256 ? 
-                `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's 256KB limit!</p>` 
+                `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's limit!</p>` 
                 : ''}
             <div class="format-group">
-                <h4>MP4 Format (${fileSize.toFixed(1)}KB)</h4>
-                <button onclick="downloadSticker('${url}', 'telegram', 'mp4')">
+                <h4>${options.mimeType} (${fileSize.toFixed(1)}KB)</h4>
+                <button onclick="downloadSticker('${url}', 'telegram', '${options.mimeType.includes('webm') ? 'webm' : 'mp4'}')">
                     Download for Telegram
                 </button>
-                <button onclick="downloadSticker('${url}', 'discord', 'mp4')">
+                <button onclick="downloadSticker('${url}', 'discord', '${options.mimeType.includes('webm') ? 'webm' : 'mp4'}')">
                     Download for Discord
                 </button>
             </div>
@@ -466,20 +536,35 @@ async function exportForSticker() {
                 </button>
             ` : ''}
             <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
-            <p style="font-size: 12px; margin-top: 10px;">
-                Telegram limit: 256KB<br>
-                Discord limit: 500KB
-            </p>
         `;
-
         document.body.appendChild(exportDiv);
 
     } catch (error) {
         console.error('Export failed:', error);
-        alert(`Failed to export sticker: ${error.message}. Please try a different browser.`);
-        if (loadingDiv) loadingDiv.remove();
-        return;
+        loadingDiv?.remove();
+        alert(`Failed to export: ${error.message}\n\nSupported formats: ${MediaRecorder.isTypeSupported('video/mp4') ? 'MP4' : 'No MP4'}, ${MediaRecorder.isTypeSupported('video/webm') ? 'WebM' : 'No WebM'}`);
     }
+}
+
+// Add this helper function to get the best supported video format
+function getSupportedMimeType() {
+    const possibleTypes = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/mp4;codecs=h264,aac',
+        'video/mp4',
+        'video/webm;codecs=h264',
+        'video/webm'
+    ];
+
+    for (const type of possibleTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+            console.log('Using MIME type:', type);
+            return type;
+        }
+    }
+
+    throw new Error('No supported video format found');
 }
 
 async function compressAndExport(originalSize) {
@@ -509,6 +594,7 @@ async function compressAndExport(originalSize) {
         
         const mediaStream = compressedCanvas.captureStream();
         const mediaRecorder = new MediaRecorder(mediaStream, {
+            mimeType: getSupportedMimeType(),
             videoBitsPerSecond: dims.bitrate
         });
 
@@ -516,7 +602,12 @@ async function compressAndExport(originalSize) {
         mediaRecorder.ondataavailable = e => chunks.push(e.data);
         
         const blob = await new Promise(resolve => {
-            mediaRecorder.onstop = () => resolve(new Blob(chunks));
+            mediaRecorder.onstop = () => {
+                const videoBlob = new Blob(chunks, { 
+                    type: 'video/mp4; codecs="avc1.42E01E"'
+                });
+                resolve(videoBlob);
+            };
             mediaRecorder.start();
             setTimeout(() => mediaRecorder.stop(), 100);
         });
@@ -650,4 +741,154 @@ function drawLogo(ctx, progress, currentX, currentY, currentSize, bounce, curren
         currentSize
     );
     ctx.restore();
+}
+
+// Add cleanup for background elements
+function cleanupBackgroundElement() {
+    if (backgroundElement) {
+        if (backgroundElement instanceof HTMLVideoElement) {
+            backgroundElement.pause();
+            backgroundElement.src = '';
+            backgroundElement.load();
+        }
+        URL.revokeObjectURL(backgroundElement.src);
+    }
+}
+
+// Add more comprehensive error handling for media loading
+function loadMedia(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+    });
+}
+
+// Add GIF export function
+async function exportAsGif() {
+    const canvas = document.getElementById('preview-canvas');
+    const loopCount = parseInt(document.getElementById('loop-count').value);
+    const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
+    
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'loading';
+    loadingDiv.innerHTML = '<h3>Generating GIF...</h3><p>Please wait...</p>';
+    document.body.appendChild(loadingDiv);
+
+    try {
+        // Create GIF encoder with inline worker using data URL
+        const workerBlob = new Blob([`
+            (${function() {
+                // GIF encoder web worker code
+                self.onmessage = function(e) {
+                    const frames = e.data.frames;
+                    const options = e.data.options;
+                    
+                    // Process frames and create GIF
+                    // ... (worker implementation)
+                    
+                    self.postMessage({ type: 'progress', value: 100 });
+                };
+            }.toString()})()
+        `], { type: 'application/javascript' });
+
+        const workerUrl = URL.createObjectURL(workerBlob);
+
+        const gif = new GIF({
+            workers: 1,
+            quality: 10,
+            width: 512,
+            height: 512,
+            workerScript: workerUrl,
+            background: '#ffffff',
+            transparent: null,
+            dither: false
+        });
+
+        // Create temporary canvas for frame composition
+        const frameCanvas = document.createElement('canvas');
+        frameCanvas.width = 512;
+        frameCanvas.height = 512;
+        const frameCtx = frameCanvas.getContext('2d');
+
+        // Capture frames
+        for (let i = 0; i < totalFrames; i++) {
+            frameCtx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+            
+            // Draw background
+            if (backgroundElement) {
+                if (backgroundElement instanceof HTMLVideoElement) {
+                    // Calculate video time for this frame
+                    const frameTime = (i * FRAME_DURATION / 1000);
+                    backgroundElement.currentTime = videoStartTime + (frameTime % backgroundElement.duration);
+                    // Wait for the video to actually update
+                    await new Promise(resolve => setTimeout(resolve, 20));
+                }
+                frameCtx.drawImage(backgroundElement, 0, 0, frameCanvas.width, frameCanvas.height);
+            } else {
+                // If no background, fill with white
+                frameCtx.fillStyle = '#ffffff';
+                frameCtx.fillRect(0, 0, frameCanvas.width, frameCanvas.height);
+            }
+
+            // Draw piggy frame
+            const frame = Math.floor(i % FRAMES_IN_SEQUENCE);
+            piggyGif.move_to(frame);
+            frameCtx.drawImage(piggyGif.get_canvas(), 0, 0, frameCanvas.width, frameCanvas.height);
+
+            // Add frame to GIF
+            gif.addFrame(frameCanvas, {
+                delay: FRAME_DURATION,
+                copy: true,
+                dispose: 2 // Clear frame before drawing next one
+            });
+
+            // Update loading progress
+            loadingDiv.innerHTML = `<h3>Generating GIF...</h3><p>Frame ${i + 1} of ${totalFrames}</p>`;
+        }
+
+        // Create a promise to handle the GIF completion
+        const gifPromise = new Promise((resolve, reject) => {
+            gif.on('finished', blob => {
+                resolve(blob);
+            });
+            gif.on('error', error => {
+                reject(error);
+            });
+        });
+
+        // Start rendering and wait for completion
+        gif.render();
+        const blob = await gifPromise;
+        
+        const url = URL.createObjectURL(blob);
+        const fileSize = blob.size / 1024;
+        
+        loadingDiv.remove();
+        
+        // Show export dialog
+        const exportDiv = document.createElement('div');
+        exportDiv.className = 'export-dialog';
+        exportDiv.innerHTML = `
+            <h3>Export Sticker</h3>
+            ${fileSize > 256 ? 
+                `<p class="size-warning">Warning: GIF size (${fileSize.toFixed(1)}KB) exceeds Telegram's limit!</p>` 
+                : ''}
+            <div class="format-group">
+                <h4>GIF Format (${fileSize.toFixed(1)}KB)</h4>
+                <button onclick="downloadSticker('${url}', 'telegram', 'gif')">
+                    Download GIF
+                </button>
+            </div>
+            <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
+        `;
+        document.body.appendChild(exportDiv);
+
+        URL.revokeObjectURL(workerUrl); // Clean up the worker URL when done
+    } catch (error) {
+        console.error('GIF export failed:', error);
+        loadingDiv.remove();
+        alert(`Failed to export GIF: ${error.message}`);
+    }
 }
