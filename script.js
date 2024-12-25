@@ -409,11 +409,11 @@ async function animate() {
             
             // Generate new particles more consistently
             if (particles.length < PARTICLE_COUNT && Math.random() < 0.4) {
-                const emitX = ctx.canvas.width * 0.15;
-                const emitY = ctx.canvas.height * 0.85;
-                const angle = (-30 + Math.random() * 60) * (Math.PI / 180); // Wider angle range
-                const speed = 6 + Math.random() * 4; // Increased base speed
-                const size = 20 + Math.random() * 15; // Slightly larger particles
+                const emitX = ctx.canvas.width * 0.35;
+                const emitY = ctx.canvas.height * 0.9;
+                const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
+                const speed = 6 + Math.random() * 4;
+                const size = 20 + Math.random() * 15;
                 particles.push(new Particle(emitX, emitY, angle, speed, size));
             }
             
@@ -1056,16 +1056,16 @@ function toggleMirrorY() {
     btn.textContent = mirrorY ? '↕️ Flip Back' : '↕️ Flip Y';
 }
 
-// Update the initializeParticles function
+// Update the initializeParticles function to match the continuous particle generation
 function initializeParticles() {
     particles = [];
-    const emitX = ctx.canvas.width * 0.15;
-    const emitY = ctx.canvas.height * 0.85;
+    const emitX = ctx.canvas.width * 0.35;
+    const emitY = ctx.canvas.height * 0.9;
     
     for (let i = 0; i < PARTICLE_COUNT; i++) {
         const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
-        const speed = 10 + Math.random() * 5;
-        const size = 15 + Math.random() * 12;
+        const speed = 6 + Math.random() * 4;
+        const size = 20 + Math.random() * 15;
         particles.push(new Particle(emitX, emitY, angle, speed, size));
     }
 }
