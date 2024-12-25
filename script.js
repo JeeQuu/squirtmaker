@@ -103,14 +103,14 @@ class Particle {
         this.lifetime = 0;
         this.rotation = Math.random() * Math.PI * 2;
         this.rotationSpeed = (Math.random() - 0.5) * 0.2; // Slower rotation
-        this.gravity = 0.15; // Reduced gravity
-        this.bounce = 0.6; // Add bounce factor
-        // Adjust velocities for more arc-like trajectory
-        this.velocityY = -speed * Math.sin(angle) * 1.5;
-        this.velocityX = speed * Math.cos(angle);
+        this.gravity = 0.12; // Reduced gravity for longer air time
+        this.bounce = 0.65; // Slightly increased bounce
+        // Adjust velocities for higher arc
+        this.velocityY = -speed * Math.sin(angle) * 2.2; // Increased upward velocity
+        this.velocityX = speed * Math.cos(angle) * 1.2; // Slightly increased horizontal speed
         this.splashed = false;
         this.opacity = 1;
-        this.blueShade = 170 + Math.random() * 85; // Range from 170-255 for more blue variation
+        this.blueShade = 220 + Math.random() * 35; // Higher blue range (220-255)
     }
 
     update(deltaTime) {
@@ -148,19 +148,19 @@ class Particle {
             0, this.size/2
         );
         
-        // More saturated blue gradient
+        // More intense blue gradient
         const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
-        gradient.addColorStop(0, `rgba(200, 240, 255, ${this.opacity * 0.9})`);    // Lighter blue core
-        gradient.addColorStop(0.3, `rgba(50, 150, 255, ${this.opacity * 0.8})`);   // Medium blue
-        gradient.addColorStop(1, `rgba(0, ${this.blueShade}, 255, ${this.opacity * 0.6})`); // Custom blue edge
+        gradient.addColorStop(0, `rgba(200, 240, 255, ${this.opacity * 0.98})`);   // Slightly bluer core
+        gradient.addColorStop(0.3, `rgba(40, 140, 255, ${this.opacity * 0.95})`);  // More saturated mid blue
+        gradient.addColorStop(1, `rgba(0, ${this.blueShade}, 255, ${this.opacity * 0.9})`); // Intense blue edge
         
         ctx.fillStyle = gradient;
         ctx.fill();
         
-        // Brighter highlight
+        // Brighter highlight for contrast
         ctx.beginPath();
-        ctx.arc(-this.size/4, -this.size/4, this.size/5, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity * 0.7})`;
+        ctx.arc(-this.size/4, -this.size/4, this.size/4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity * 0.9})`;
         ctx.fill();
         
         ctx.restore();
@@ -303,10 +303,54 @@ function startAnimationLoop() {
     animate();
 }
 
+// Add these performance-related constants at the top
+const PERFORMANCE_CONFIG = {
+    USE_RAF: true,              // Use requestAnimationFrame
+    THROTTLE_PARTICLES: true,   // Limit particle updates
+    MAX_PARTICLES: 15,          // Reduce max particles for better performance
+    BATCH_RENDERING: true,      // Batch render particles
+    USE_OFFSCREEN: true         // Use offscreen canvas when available
+};
+
+// Add an offscreen canvas for particle rendering
+let particleCanvas = null;
+let particleCtx = null;
+
+// Update the initialization
+function initializeCanvases() {
+    const mainCanvas = document.getElementById('preview-canvas');
+    ctx = mainCanvas.getContext('2d', { 
+        willReadFrequently: true,
+        alpha: false  // Disable alpha for better performance
+    });
+    
+    // Create offscreen canvas for particles
+    particleCanvas = document.createElement('canvas');
+    particleCanvas.width = mainCanvas.width;
+    particleCanvas.height = mainCanvas.height;
+    particleCtx = particleCanvas.getContext('2d', {
+        willReadFrequently: false,
+        alpha: true
+    });
+}
+
+// Update the animate function
 async function animate() {
+    if (!PERFORMANCE_CONFIG.USE_RAF) {
+        setTimeout(animate, FRAME_DURATION);
+        return;
+    }
+
     const now = performance.now();
     if (!startTime) startTime = now;
     
+    // Throttle updates
+    if (now - lastUpdate < 16) { // Cap at ~60fps
+        animationFrameId = requestAnimationFrame(animate);
+        return;
+    }
+    lastUpdate = now;
+
     const elapsed = now - startTime;
     const loopCount = parseInt(document.getElementById('loop-count').value);
     const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
@@ -345,17 +389,23 @@ async function animate() {
             particles = particles.filter(particle => particle.update(deltaTime));
             
             // Generate new particles more consistently
-            if (particles.length < PARTICLE_COUNT && Math.random() < 0.4) { // Increased spawn rate
+            if (particles.length < PARTICLE_COUNT && Math.random() < 0.4) {
                 const emitX = ctx.canvas.width * 0.15;
                 const emitY = ctx.canvas.height * 0.85;
-                const angle = (-25 + Math.random() * 50) * (Math.PI / 180); // Adjusted angle
-                const speed = 4 + Math.random() * 4; // Adjusted speed range
-                const size = 18 + Math.random() * 14; // Slightly adjusted size
+                const angle = (-30 + Math.random() * 60) * (Math.PI / 180); // Wider angle range
+                const speed = 6 + Math.random() * 4; // Increased base speed
+                const size = 20 + Math.random() * 15; // Slightly larger particles
                 particles.push(new Particle(emitX, emitY, angle, speed, size));
             }
             
             // Draw particles
-            particles.forEach(particle => particle.draw(ctx));
+            if (PERFORMANCE_CONFIG.BATCH_RENDERING && particleCtx) {
+                particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+                particles.forEach(particle => particle.draw(particleCtx));
+                ctx.drawImage(particleCanvas, 0, 0);
+            } else {
+                particles.forEach(particle => particle.draw(ctx));
+            }
         }
         
         // Draw logo
@@ -1122,6 +1172,19 @@ function attachEventListeners() {
 // Update the initialization order
 async function initializeApp() {
     try {
+        // Detect performance capabilities
+        PERFORMANCE_CONFIG.USE_RAF = window.requestAnimationFrame !== undefined;
+        PERFORMANCE_CONFIG.USE_OFFSCREEN = 'OffscreenCanvas' in window;
+        
+        // Initialize canvases
+        initializeCanvases();
+        
+        // Reduce particle count on lower-end devices
+        if (navigator.hardwareConcurrency <= 4) {
+            PERFORMANCE_CONFIG.MAX_PARTICLES = 10;
+            PERFORMANCE_CONFIG.THROTTLE_PARTICLES = true;
+        }
+
         // First initialize controls
         const canvas = document.getElementById('preview-canvas');
         if (!canvas) {
@@ -1204,4 +1267,27 @@ function loadLogoImage() {
         
         logoImage.src = LOGO_URL;
     });
+}
+
+// Add performance monitoring
+let frameCount = 0;
+let lastFPSUpdate = performance.now();
+let currentFPS = 0;
+
+function updateFPS() {
+    const now = performance.now();
+    const delta = now - lastFPSUpdate;
+    
+    if (delta >= 1000) { // Update every second
+        currentFPS = Math.round((frameCount * 1000) / delta);
+        frameCount = 0;
+        lastFPSUpdate = now;
+        
+        // Adjust performance settings if needed
+        if (currentFPS < 30) {
+            PERFORMANCE_CONFIG.MAX_PARTICLES = Math.max(5, PERFORMANCE_CONFIG.MAX_PARTICLES - 2);
+            PERFORMANCE_CONFIG.THROTTLE_PARTICLES = true;
+        }
+    }
+    frameCount++;
 }
