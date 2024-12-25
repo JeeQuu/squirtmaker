@@ -221,7 +221,7 @@ function setSpeed(speed) {
     startTime = 0;
 }
 
-// Move the existing background upload handler into a named function
+// Move handleBackgroundUpload function definition before it's used
 function handleBackgroundUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -257,11 +257,6 @@ function handleBackgroundUpload(e) {
     };
     
     reader.readAsDataURL(file);
-    
-    // Stop zoom animation when new background is loaded
-    if (zoomAnimationActive) {
-        toggleZoomAnimation();
-    }
 }
 
 // Add loop count change listener
@@ -287,19 +282,12 @@ function updatePreview() {
 let ctx = null;
 
 function startAnimationLoop() {
-    const canvas = document.getElementById('preview-canvas');
-    ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    canvas.width = 512;
-    canvas.height = 512;
-    
     if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
     }
     
     startTime = performance.now();
+    lastUpdate = performance.now();
     animate();
 }
 
@@ -319,38 +307,38 @@ let particleCtx = null;
 // Update the initialization
 function initializeCanvases() {
     const mainCanvas = document.getElementById('preview-canvas');
+    if (!mainCanvas) {
+        throw new Error('Main canvas not found');
+    }
+
+    // Set canvas dimensions first
+    mainCanvas.width = 512;
+    mainCanvas.height = 512;
+    
+    // Initialize main context
     ctx = mainCanvas.getContext('2d', { 
         willReadFrequently: true,
-        alpha: false  // Disable alpha for better performance
+        alpha: true  // Enable alpha for proper transparency
     });
+    
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     
     // Create offscreen canvas for particles
     particleCanvas = document.createElement('canvas');
     particleCanvas.width = mainCanvas.width;
     particleCanvas.height = mainCanvas.height;
     particleCtx = particleCanvas.getContext('2d', {
-        willReadFrequently: false,
         alpha: true
     });
 }
 
 // Update the animate function
 async function animate() {
-    if (!PERFORMANCE_CONFIG.USE_RAF) {
-        setTimeout(animate, FRAME_DURATION);
-        return;
-    }
-
     const now = performance.now();
     if (!startTime) startTime = now;
-    
-    // Throttle updates
-    if (now - lastUpdate < 16) { // Cap at ~60fps
-        animationFrameId = requestAnimationFrame(animate);
-        return;
-    }
-    lastUpdate = now;
 
+    // Add back the elapsed time calculation
     const elapsed = now - startTime;
     const loopCount = parseInt(document.getElementById('loop-count').value);
     const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
@@ -359,6 +347,7 @@ async function animate() {
         startTime = now;
     }
     
+    // Clear the entire canvas
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     
     // Draw background
@@ -439,12 +428,15 @@ async function animate() {
         try {
             piggyGif.move_to(frame);
             const piggyCanvas = piggyGif.get_canvas();
-            ctx.drawImage(piggyCanvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+            if (piggyCanvas) {
+                ctx.drawImage(piggyCanvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+            }
         } catch (e) {
             console.error('Error drawing frame:', e);
         }
     }
     
+    // Request next frame
     animationFrameId = requestAnimationFrame(animate);
 }
 
@@ -1172,33 +1164,10 @@ function attachEventListeners() {
 // Update the initialization order
 async function initializeApp() {
     try {
-        // Detect performance capabilities
-        PERFORMANCE_CONFIG.USE_RAF = window.requestAnimationFrame !== undefined;
-        PERFORMANCE_CONFIG.USE_OFFSCREEN = 'OffscreenCanvas' in window;
-        
-        // Initialize canvases
+        // First initialize canvases
         initializeCanvases();
         
-        // Reduce particle count on lower-end devices
-        if (navigator.hardwareConcurrency <= 4) {
-            PERFORMANCE_CONFIG.MAX_PARTICLES = 10;
-            PERFORMANCE_CONFIG.THROTTLE_PARTICLES = true;
-        }
-
-        // First initialize controls
-        const canvas = document.getElementById('preview-canvas');
-        if (!canvas) {
-            throw new Error('Preview canvas not found');
-        }
-        
-        ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-
-        canvas.width = 512;
-        canvas.height = 512;
-
-        // Then load the logo
+        // Then load resources
         await loadLogoImage();
         console.log('Logo loaded successfully');
         
@@ -1210,35 +1179,36 @@ async function initializeApp() {
         
         piggyElement.crossOrigin = "anonymous";
         
-        // Initialize SuperGif and store in global variable
+        // Initialize SuperGif
         piggyGif = new SuperGif({ 
             gif: piggyElement,
             auto_play: false 
         });
 
         // Load the GIF
-        await new Promise((resolve) => {
+        await new Promise((resolve, reject) => {
             piggyGif.load(() => {
                 console.log('GIF loaded');
                 resolve();
             });
         });
 
-        // Attach event listeners after elements are initialized
+        // Attach event listeners
         attachEventListeners();
         
-        // Finally start the animation loop
+        // Finally start animation loop
         startAnimationLoop();
     } catch (error) {
         console.error('Failed to initialize:', error);
-        // Show error to user
         alert('Failed to initialize application: ' + error.message);
     }
 }
 
-// Wait for DOM to be ready before initializing
-document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
+// Wait for full page load, not just DOM
+window.addEventListener('load', () => {
+    initializeApp().catch(error => {
+        console.error('Initialization failed:', error);
+    });
 });
 
 // Add this function back (after removing the old initialization)
