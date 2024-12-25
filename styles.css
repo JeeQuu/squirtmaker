@@ -1,13 +1,8 @@
-#bg-video {
-    position: fixed;
-    right: 0;
-    bottom: 0;
-    min-width: 100%;
-    min-height: 100%;
-    width: auto;
-    height: auto;
-    z-index: -1;
-    object-fit: cover;
+body {
+    background: #f0f0f0;
+    margin: 0;
+    padding: 20px;
+    font-family: Arial, sans-serif;
 }
 
 .container {
