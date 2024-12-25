@@ -65,6 +65,7 @@ const MAX_STICKER_LENGTH = 3;
 // Store the last animation frame request
 let animationFrameId = null;
 let startTime = 0;
+let lastUpdate = 0;
 
 // Add these variables at the top with other globals
 let zoomAnimationActive = false;
@@ -286,8 +287,25 @@ function startAnimationLoop() {
         cancelAnimationFrame(animationFrameId);
     }
     
+    // Reset all animation timers
     startTime = performance.now();
-    lastUpdate = performance.now();
+    lastUpdate = startTime;
+    
+    // Reset GIF to first frame
+    if (piggyGif) {
+        piggyGif.move_to(0);
+    }
+    
+    // Reset video to start point if it exists
+    if (backgroundElement instanceof HTMLVideoElement) {
+        backgroundElement.currentTime = videoStartTime;
+    }
+    
+    // Reset zoom animation
+    if (zoomAnimationActive) {
+        zoomStartTime = startTime;
+    }
+    
     animate();
 }
 
@@ -336,15 +354,27 @@ function initializeCanvases() {
 // Update the animate function
 async function animate() {
     const now = performance.now();
-    if (!startTime) startTime = now;
+    if (!startTime) {
+        startTime = now;
+        lastUpdate = now;
+        // Ensure we start from frame 0
+        if (piggyGif) {
+            piggyGif.move_to(0);
+        }
+    }
 
-    // Add back the elapsed time calculation
     const elapsed = now - startTime;
     const loopCount = parseInt(document.getElementById('loop-count').value);
     const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
     
+    // Reset animation when it completes
     if (elapsed >= totalDuration) {
         startTime = now;
+        lastUpdate = now;
+        // Reset to first frame when looping
+        if (piggyGif) {
+            piggyGif.move_to(0);
+        }
     }
     
     // Clear the entire canvas
@@ -441,6 +471,16 @@ async function animate() {
 }
 
 async function exportForSticker() {
+    // Reset to first frame before starting export
+    if (piggyGif) {
+        piggyGif.move_to(0);
+    }
+    
+    // Reset video if present
+    if (backgroundElement instanceof HTMLVideoElement) {
+        backgroundElement.currentTime = videoStartTime;
+    }
+    
     const exportDiv = document.createElement('div');
     exportDiv.className = 'export-dialog';
     exportDiv.innerHTML = `
