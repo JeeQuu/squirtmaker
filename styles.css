@@ -559,4 +559,31 @@ input[type="range"]::-moz-range-track {
 .export-buttons {
     margin-top: 15px;
 }
+
+.mirror-controls {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 15px auto;
+    width: fit-content;
+}
+
+.mirror-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.3s;
+}
+
+.mirror-btn:hover {
+    background: #45a049;
+}
+
+.mirror-btn.active {
+    background: #f44336;
+}
  

@@ -76,12 +76,6 @@
                            max="24" 
                            value="1" 
                            class="styled-slider">
-                    <div class="quality-toggle">
-                        <label>
-                            <input type="checkbox" id="high-quality"> High Quality
-                            <span class="hint">(shorter max duration)</span>
-                        </label>
-                    </div>
                 </div>
                 <div class="slider-group">
                     <label>Zoom</label>
@@ -98,6 +92,14 @@
                     <div class="slider-group">
                         <label>Vertical</label>
                         <input type="range" id="crop-y" min="0" max="100" value="50">
+                    </div>
+                    <div class="mirror-controls">
+                        <button class="mirror-btn" onclick="toggleMirrorX()">
+                            <span class="mirror-x-status">↔️ Flip X</span>
+                        </button>
+                        <button class="mirror-btn" onclick="toggleMirrorY()">
+                            <span class="mirror-y-status">↕️ Flip Y</span>
+                        </button>
                     </div>
                 </div>
                 <div class="logo-controls">
@@ -116,6 +118,10 @@
                 Export Sticker
             </button>
         </div>
+    </div>
+    <div id="high-quality-container">
+        <input type="checkbox" id="high-quality">
+        <label for="high-quality">High Quality Export</label>
     </div>
     <script src="script.js"></script>
 </body>

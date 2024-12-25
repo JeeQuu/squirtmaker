@@ -1,5 +1,5 @@
 // Initialize controls
-const speedControl = document.getElementById('speed-control');
+// const speedControl = document.getElementById('speed-control');
 const speedInfo = document.getElementById('speed-info');
 const zoomControl = document.getElementById('zoom');
 const cropX = document.getElementById('crop-x');
@@ -13,20 +13,11 @@ let logoAnimationActive = false;
 let logoImage = null;
 let logoStartTime = 0;
 
-// Initialize piggy animation
-const piggyGif = new SuperGif({ 
-    gif: document.getElementById('piggy-gif'),
-    auto_play: false 
-});
+// At the top of the file, add a constant for the logo URL
+const LOGO_URL = 'https://res.cloudinary.com/dakoxedxt/image/upload/v1734964113/SQUIRTww_ltlzuv.png';
 
-// Add crossOrigin to the piggy GIF image
-document.getElementById('piggy-gif').crossOrigin = "anonymous";
-
-// Load the GIF
-piggyGif.load(() => {
-    console.log('GIF loaded');  // Debug message
-    startAnimationLoop();
-});
+// Add piggyGif to globals
+let piggyGif = null;
 
 // Move constants to a configuration file
 const CONFIG = {
@@ -85,11 +76,19 @@ let zoomStartTime = 0;
 
 // Add these at the top with other globals
 let particles = [];
-const PARTICLE_COUNT = 20; // More particles
-const PARTICLE_LIFETIME = 1200; // Longer lifetime
+const PARTICLE_COUNT = 20;
+const PARTICLE_LIFETIME = 1200;
 
 // Add this at the top with other globals
 let logoVisible = true;  // Instead of particlesEnabled
+
+// Add these variables at the top with other globals
+let mirrorX = false;
+let mirrorY = false;
+
+// Replace the particleSystem object with simpler state management
+let particleSystemActive = false;
+let lastParticleUpdate = 0;
 
 // Add this class to manage individual particles
 class Particle {
@@ -103,11 +102,15 @@ class Particle {
         this.size = size;
         this.lifetime = 0;
         this.rotation = Math.random() * Math.PI * 2;
-        this.rotationSpeed = (Math.random() - 0.5) * 0.4; // More rotation
-        this.gravity = 0.25;
-        // Adjust velocities for cone shape
-        this.velocityY = -speed * Math.sin(angle) * 2;    // More upward force
-        this.velocityX = speed * Math.cos(angle) * 1.5;   // More horizontal force
+        this.rotationSpeed = (Math.random() - 0.5) * 0.2; // Slower rotation
+        this.gravity = 0.15; // Reduced gravity
+        this.bounce = 0.6; // Add bounce factor
+        // Adjust velocities for more arc-like trajectory
+        this.velocityY = -speed * Math.sin(angle) * 1.5;
+        this.velocityX = speed * Math.cos(angle);
+        this.splashed = false;
+        this.opacity = 1;
+        this.blueShade = 170 + Math.random() * 85; // Range from 170-255 for more blue variation
     }
 
     update(deltaTime) {
@@ -116,11 +119,22 @@ class Particle {
         this.x += this.velocityX;
         this.y += this.velocityY;
         this.rotation += this.rotationSpeed;
+
+        // Add splashing effect when particle hits "ground"
+        if (this.y > this.startY && !this.splashed) {
+            this.splashed = true;
+            this.velocityY = -this.velocityY * this.bounce;
+            this.velocityX *= 0.8;
+            this.size *= 0.8;
+        }
+
+        // Fade out more slowly
+        this.opacity = Math.max(0, 1 - (this.lifetime / PARTICLE_LIFETIME));
+        
         return this.lifetime < PARTICLE_LIFETIME;
     }
 
     draw(ctx) {
-        const opacity = 1 - (this.lifetime / PARTICLE_LIFETIME);
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rotation);
@@ -134,13 +148,21 @@ class Particle {
             0, this.size/2
         );
         
-        // Brighter colors and higher opacity for more visibility
+        // More saturated blue gradient
         const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
-        gradient.addColorStop(0, `rgba(150, 220, 255, ${opacity * 0.9})`);  // Brighter blue, higher opacity
-        gradient.addColorStop(1, `rgba(0, 170, 255, ${opacity * 0.5})`);    // More saturated blue, higher opacity
+        gradient.addColorStop(0, `rgba(200, 240, 255, ${this.opacity * 0.9})`);    // Lighter blue core
+        gradient.addColorStop(0.3, `rgba(50, 150, 255, ${this.opacity * 0.8})`);   // Medium blue
+        gradient.addColorStop(1, `rgba(0, ${this.blueShade}, 255, ${this.opacity * 0.6})`); // Custom blue edge
         
         ctx.fillStyle = gradient;
         ctx.fill();
+        
+        // Brighter highlight
+        ctx.beginPath();
+        ctx.arc(-this.size/4, -this.size/4, this.size/5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity * 0.7})`;
+        ctx.fill();
+        
         ctx.restore();
     }
 }
@@ -160,10 +182,20 @@ function updateVideoControls() {
     if (backgroundElement instanceof HTMLVideoElement) {
         startFrameControl.style.display = 'block';
         videoDuration = backgroundElement.duration;
+        
+        // Debounce the input handler to prevent excessive updates
+        let timeoutId;
         startFrame.addEventListener('input', (e) => {
-            videoStartTime = (e.target.value / 100) * videoDuration;
-            startTimeDisplay.textContent = `${videoStartTime.toFixed(2)}s`;
-            backgroundElement.currentTime = videoStartTime;
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                videoStartTime = (e.target.value / 100) * videoDuration;
+                startTimeDisplay.textContent = `${videoStartTime.toFixed(2)}s`;
+                
+                // Only update video time if not currently animating
+                if (!animationLoop) {
+                    backgroundElement.currentTime = videoStartTime;
+                }
+            }, 16); // Debounce to roughly 60fps
         });
     } else {
         startFrameControl.style.display = 'none';
@@ -189,8 +221,8 @@ function setSpeed(speed) {
     startTime = 0;
 }
 
-// Handle file uploads
-document.getElementById('background-upload').addEventListener('change', function(e) {
+// Move the existing background upload handler into a named function
+function handleBackgroundUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     
@@ -230,7 +262,7 @@ document.getElementById('background-upload').addEventListener('change', function
     if (zoomAnimationActive) {
         toggleZoomAnimation();
     }
-});
+}
 
 // Add loop count change listener
 document.getElementById('loop-count').addEventListener('input', function(e) {
@@ -251,134 +283,87 @@ function updatePreview() {
     }
 }
 
+// Add this at the top with other globals
+let ctx = null;
+
 function startAnimationLoop() {
     const canvas = document.getElementById('preview-canvas');
-    const ctx = canvas.getContext('2d');
+    ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
     canvas.width = 512;
     canvas.height = 512;
     
-    function drawBackground() {
-        if (backgroundElement) {
-            if (backgroundElement instanceof HTMLVideoElement) {
-                // Calculate total animation duration
-                const loopCount = parseInt(document.getElementById('loop-count').value);
-                const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount) / 1000;
-                
-                // Calculate current time in the animation
-                const elapsed = (performance.now() - startTime) / 1000;
-                const animationProgress = elapsed % totalDuration;
-                
-                // Set video time based on start point and current progress
-                const videoTime = videoStartTime + animationProgress;
-                
-                // If video would exceed its duration, loop back to start
-                if (videoTime > backgroundElement.duration) {
-                    backgroundElement.currentTime = videoStartTime;
-                } else {
-                    backgroundElement.currentTime = videoTime;
-                }
-            }
-            
-            // Get position values from sliders (0-100)
-            const xOffset = parseInt(cropX.value);
-            const yOffset = parseInt(cropY.value);
-            
-            // Base zoom from slider
-            const baseZoom = parseInt(zoomControl.value) / 100;
-            
-            // Calculate animation zoom
-            let animationZoom = 1;
-            if (zoomAnimationActive) {
-                const loopCount = parseInt(document.getElementById('loop-count').value);
-                const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
-                
-                if (!zoomStartTime) zoomStartTime = performance.now();
-                const elapsed = performance.now() - zoomStartTime;
-
-                if (elapsed >= totalDuration) {
-                    zoomStartTime = performance.now();
-                }
-
-                const progress = (elapsed % totalDuration) / totalDuration;
-                const zoomProgress = Math.sin(progress * Math.PI * 2) * 0.5 + 0.5;
-                animationZoom = 1 + ((MAX_ZOOM - MIN_ZOOM) / 100 * zoomProgress);
-            }
-            
-            // Combine base zoom with animation zoom
-            const finalZoom = baseZoom * animationZoom;
-            
-            // Calculate aspect ratio preserving dimensions
-            let width, height, offsetX, offsetY;
-            
-            const containerRatio = canvas.width / canvas.height;
-            const mediaRatio = (backgroundElement instanceof HTMLVideoElement) 
-                ? backgroundElement.videoWidth / backgroundElement.videoHeight
-                : backgroundElement.width / backgroundElement.height;
-            
-            if (mediaRatio > containerRatio) {
-                height = canvas.height * finalZoom;
-                width = height * mediaRatio;
-                offsetX = ((canvas.width - width) * xOffset / 100);
-                offsetY = ((canvas.height - height) * yOffset / 100);
-            } else {
-                width = canvas.width * finalZoom;
-                height = width / mediaRatio;
-                offsetX = ((canvas.width - width) * xOffset / 100);
-                offsetY = ((canvas.height - height) * yOffset / 100);
-            }
-            
-            ctx.drawImage(backgroundElement, offsetX, offsetY, width, height);
-        } else {
-            ctx.fillStyle = '#f0f0f0';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
     }
     
-    function animate(timestamp) {
-        if (!startTime) startTime = timestamp;
-        
-        const elapsed = timestamp - startTime;
-        const loopCount = parseInt(document.getElementById('loop-count').value);
-        const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
-        
-        // Reset animation if we've completed all loops
-        if (elapsed >= totalDuration) {
-            startTime = timestamp;
+    startTime = performance.now();
+    animate();
+}
+
+async function animate() {
+    const now = performance.now();
+    if (!startTime) startTime = now;
+    
+    const elapsed = now - startTime;
+    const loopCount = parseInt(document.getElementById('loop-count').value);
+    const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
+    
+    if (elapsed >= totalDuration) {
+        startTime = now;
+    }
+    
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    
+    // Draw background
+    await drawBackground();
+    
+    // Draw squirt animation FIRST (under piggy)
+    if (logoAnimationActive && logoImage) {
+        const now = performance.now();
+        if (!logoStartTime) {
+            logoStartTime = now;
+            lastParticleUpdate = now;
+            particles = [];
+            initializeParticles();
+            particleSystemActive = true;
         }
         
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawBackground();
+        // Calculate animation progress
+        const particleElapsed = now - logoStartTime;
+        const duration = 1800; // Slightly faster cycle
+        const progress = (particleElapsed % duration) / duration;
         
-        // Draw logo before piggy if animation is active
-        if (logoAnimationActive && logoImage) {
-            const now = performance.now();
-            if (!logoStartTime) {
-                logoStartTime = now;
-                particles = [];
-                // Always generate particles
-                const emitX = canvas.width * 0.15;
-                const emitY = canvas.height * 0.85;
-                
-                for (let i = 0; i < PARTICLE_COUNT; i++) {
-                    const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
-                    const speed = 10 + Math.random() * 5;
-                    const size = 15 + Math.random() * 12;
-                    particles.push(new Particle(emitX, emitY, angle, speed, size));
-                }
+        // Update and draw particles
+        if (particleSystemActive) {
+            const deltaTime = now - lastParticleUpdate;
+            lastParticleUpdate = now;
+            
+            // Update existing particles
+            particles = particles.filter(particle => particle.update(deltaTime));
+            
+            // Generate new particles more consistently
+            if (particles.length < PARTICLE_COUNT && Math.random() < 0.4) { // Increased spawn rate
+                const emitX = ctx.canvas.width * 0.15;
+                const emitY = ctx.canvas.height * 0.85;
+                const angle = (-25 + Math.random() * 50) * (Math.PI / 180); // Adjusted angle
+                const speed = 4 + Math.random() * 4; // Adjusted speed range
+                const size = 18 + Math.random() * 14; // Slightly adjusted size
+                particles.push(new Particle(emitX, emitY, angle, speed, size));
             }
             
-            const elapsed = now - logoStartTime;
-            const duration = 1500;
-            const progress = (elapsed % duration) / duration;
-            
-            // Calculate logo parameters
-            const startX = canvas.width * 0.3;
-            const startY = canvas.height * 0.9;
-            const endX = canvas.width * 0.8;
-            const endY = canvas.height * 0.1;
+            // Draw particles
+            particles.forEach(particle => particle.draw(ctx));
+        }
+        
+        // Draw logo
+        if (logoVisible) {
+            const startX = ctx.canvas.width * 0.3;
+            const startY = ctx.canvas.height * 0.9;
+            const endX = ctx.canvas.width * 0.8;
+            const endY = ctx.canvas.height * 0.1;
             
             const easeProgress = Math.pow(progress, 0.7);
             const currentX = startX + (endX - startX) * easeProgress;
@@ -394,46 +379,22 @@ function startAnimationLoop() {
             const currentAngle = startAngle + (endAngle - startAngle) * easeProgress;
             const opacity = progress > 0.9 ? (1 - progress) * 10 : 1;
             
-            // Draw logo using the separate function
             drawLogo(ctx, progress, currentX, currentY, currentSize, bounce, currentAngle, opacity);
-
-            // Update and draw particles
-            const deltaTime = elapsed % duration / 60;
-            particles = particles.filter(particle => {
-                const alive = particle.update(deltaTime);
-                if (alive) particle.draw(ctx);
-                return alive;
-            });
-            
-            // Generate new particles
-            if (progress < 0.4 && particles.length < PARTICLE_COUNT && Math.random() < 0.5) {
-                const emitX = canvas.width * 0.15;
-                const emitY = canvas.height * 0.85;
-                const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
-                const speed = 10 + Math.random() * 5;
-                const size = 15 + Math.random() * 12;
-                particles.push(new Particle(emitX, emitY, angle, speed, size));
-            }
         }
-        
-        // Draw piggy frame
+    }
+    
+    // Draw piggy ON TOP
+    if (piggyGif) {
         const frame = Math.floor((elapsed / FRAME_DURATION) % FRAMES_IN_SEQUENCE);
         try {
             piggyGif.move_to(frame);
             const piggyCanvas = piggyGif.get_canvas();
-            ctx.drawImage(piggyCanvas, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(piggyCanvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
         } catch (e) {
             console.error('Error drawing frame:', e);
         }
-        
-        animationFrameId = requestAnimationFrame(animate);
     }
     
-    if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-    }
-    
-    startTime = 0;
     animationFrameId = requestAnimationFrame(animate);
 }
 
@@ -714,20 +675,13 @@ document.getElementById('loop-count').addEventListener('input', function() {
     updateDurationDisplay();
 });
 
-// Load the logo image
-function loadLogoImage() {
-    logoImage = new Image();
-    logoImage.crossOrigin = "anonymous";
-    logoImage.src = 'https://res.cloudinary.com/dakoxedxt/image/upload/v1734964113/SQUIRTww_ltlzuv.png';
-    return new Promise((resolve) => {
-        logoImage.onload = resolve;
-    });
-}
-
-// Call this when page loads
-loadLogoImage();
-
+// Update the toggleLogoAnimation function
 function toggleLogoAnimation() {
+    if (!logoImage || !logoImage.complete) {
+        console.error('Logo image not ready');
+        return;
+    }
+    
     logoAnimationActive = !logoAnimationActive;
     const btn = document.querySelector('.logo-animate-btn');
     const statusSpan = btn.querySelector('.logo-status');
@@ -735,13 +689,18 @@ function toggleLogoAnimation() {
     if (logoAnimationActive) {
         btn.classList.add('active');
         statusSpan.textContent = '⏹ Remove SQUIRT';
-        logoStartTime = 0;
-        // Reset particles when animation starts
+        logoStartTime = performance.now();
+        lastParticleUpdate = performance.now();
+        particleSystemActive = true;
         particles = [];
+        if (ctx) { // Make sure ctx exists before initializing particles
+            initializeParticles();
+        }
     } else {
         btn.classList.remove('active');
         statusSpan.textContent = '🌊 Add SQUIRT';
-        // Clear particles when animation stops
+        logoStartTime = 0;
+        particleSystemActive = false;
         particles = [];
     }
 }
@@ -762,21 +721,24 @@ function toggleParticles() {
 }
 
 // Add this function to handle logo drawing
-function drawLogo(ctx, progress, currentX, currentY, currentSize, bounce, currentAngle, opacity) {
-    if (!logoVisible) return;  // Skip drawing if logo is hidden
+function drawLogo(ctx, progress, x, y, size, bounce, angle, opacity) {
+    if (!logoImage || !logoVisible || logoImage.complete === false) return;
     
-    ctx.save();
-    ctx.globalAlpha = opacity;
-    ctx.translate(currentX, currentY + bounce);
-    ctx.rotate(currentAngle);
-    ctx.drawImage(
-        logoImage,
-        -currentSize/2,
-        -currentSize/2,
-        currentSize,
-        currentSize
-    );
-    ctx.restore();
+    try {
+        ctx.save();
+        ctx.translate(x, y + bounce);
+        ctx.rotate(angle);
+        ctx.globalAlpha = opacity;
+        
+        const logoWidth = size;
+        const logoHeight = size * (logoImage.height / logoImage.width);
+        ctx.drawImage(logoImage, -logoWidth/2, -logoHeight/2, logoWidth, logoHeight);
+        
+        ctx.restore();
+    } catch (error) {
+        console.error('Error drawing logo:', error);
+        logoAnimationActive = false;
+    }
 }
 
 // Add cleanup for background elements
@@ -997,4 +959,249 @@ function getBitrateForExport() {
                 'Duration:', duration,
                 'Estimated size (KB):', estimatedSize.toFixed(1));
     return bitrate;
+}
+
+// Add these functions for mirroring controls
+function toggleMirrorX() {
+    mirrorX = !mirrorX;
+    const btn = document.querySelector('.mirror-x-status');
+    btn.textContent = mirrorX ? '↔️ Flip Back' : '↔️ Flip X';
+}
+
+function toggleMirrorY() {
+    mirrorY = !mirrorY;
+    const btn = document.querySelector('.mirror-y-status');
+    btn.textContent = mirrorY ? '↕️ Flip Back' : '↕️ Flip Y';
+}
+
+// Update the initializeParticles function
+function initializeParticles() {
+    particles = [];
+    const emitX = ctx.canvas.width * 0.15;
+    const emitY = ctx.canvas.height * 0.85;
+    
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
+        const speed = 10 + Math.random() * 5;
+        const size = 15 + Math.random() * 12;
+        particles.push(new Particle(emitX, emitY, angle, speed, size));
+    }
+}
+
+// Add this function back
+function drawBackground() {
+    if (!ctx || !backgroundElement) return;
+
+    // Return a promise that resolves when background is drawn
+    return new Promise((resolve) => {
+        if (backgroundElement instanceof HTMLVideoElement) {
+            const loopCount = parseInt(document.getElementById('loop-count').value);
+            const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount) / 1000;
+            const elapsed = (performance.now() - startTime) / 1000;
+            const animationProgress = elapsed % totalDuration;
+            const targetTime = videoStartTime + animationProgress;
+            
+            if (Math.abs(backgroundElement.currentTime - targetTime) > 0.1) {
+                backgroundElement.currentTime = targetTime % backgroundElement.duration;
+            }
+        }
+
+        const xOffset = parseInt(cropX.value);
+        const yOffset = parseInt(cropY.value);
+        const baseZoom = parseInt(zoomControl.value) / 100;
+        
+        let animationZoom = 1;
+        if (zoomAnimationActive) {
+            const now = performance.now();
+            if (!zoomStartTime) zoomStartTime = now;
+            
+            const loopCount = parseInt(document.getElementById('loop-count').value);
+            const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
+            const elapsed = now - zoomStartTime;
+            
+            if (elapsed >= totalDuration) {
+                zoomStartTime = now;
+            }
+            
+            const progress = (elapsed % totalDuration) / totalDuration;
+            const zoomProgress = Math.sin(progress * Math.PI * 2) * 0.5 + 0.5;
+            animationZoom = 1 + ((MAX_ZOOM - MIN_ZOOM) / 100 * zoomProgress);
+        }
+
+        const finalZoom = baseZoom * animationZoom;
+
+        const drawImage = (source) => {
+            const containerRatio = ctx.canvas.width / ctx.canvas.height;
+            const mediaRatio = source.width / source.height;
+            
+            let width, height, offsetX, offsetY;
+            if (mediaRatio > containerRatio) {
+                height = ctx.canvas.height * finalZoom;
+                width = height * mediaRatio;
+            } else {
+                width = ctx.canvas.width * finalZoom;
+                height = width / mediaRatio;
+            }
+            
+            offsetX = ((ctx.canvas.width - width) * xOffset / 100);
+            offsetY = ((ctx.canvas.height - height) * yOffset / 100);
+
+            ctx.save();
+            if (mirrorX || mirrorY) {
+                ctx.translate(ctx.canvas.width/2, ctx.canvas.height/2);
+                ctx.scale(mirrorX ? -1 : 1, mirrorY ? -1 : 1);
+                ctx.translate(-ctx.canvas.width/2, -ctx.canvas.height/2);
+            }
+            
+            ctx.drawImage(source, offsetX, offsetY, width, height);
+            ctx.restore();
+        };
+
+        if ('createImageBitmap' in window) {
+            createImageBitmap(backgroundElement)
+                .then(bitmap => {
+                    drawImage(bitmap);
+                    bitmap.close();
+                    resolve();
+                })
+                .catch(() => {
+                    // Fallback if createImageBitmap fails
+                    drawImage(backgroundElement);
+                    resolve();
+                });
+        } else {
+            drawImage(backgroundElement);
+            resolve();
+        }
+    });
+}
+
+// Move all event listener attachments into a function
+function attachEventListeners() {
+    // Add event listeners for controls
+    if (zoomControl) zoomControl.addEventListener('input', updatePreview);
+    if (cropX) cropX.addEventListener('input', updatePreview);
+    if (cropY) cropY.addEventListener('input', updatePreview);
+
+    // Add loop count change listener
+    const loopCountInput = document.getElementById('loop-count');
+    if (loopCountInput) {
+        loopCountInput.addEventListener('input', function(e) {
+            document.getElementById('loop-count-display').textContent = e.target.value;
+            updateDurationDisplay();
+            if (zoomAnimationActive) {
+                zoomStartTime = 0; // Reset zoom animation
+            }
+        });
+    }
+
+    // Add background upload listener
+    const backgroundUpload = document.getElementById('background-upload');
+    if (backgroundUpload) {
+        backgroundUpload.addEventListener('change', handleBackgroundUpload);
+    }
+
+    // Add high quality change listener
+    const highQualityInput = document.getElementById('high-quality');
+    if (highQualityInput) {
+        highQualityInput.addEventListener('change', function(e) {
+            const loopInput = document.getElementById('loop-count');
+            if (e.target.checked) {
+                loopInput.max = Math.floor(MAX_LOOPS.normal * 0.6);
+                if (parseInt(loopInput.value) > loopInput.max) {
+                    loopInput.value = loopInput.max;
+                }
+            } else {
+                loopInput.max = MAX_LOOPS.normal;
+            }
+            updateDurationDisplay();
+        });
+    }
+}
+
+// Update the initialization order
+async function initializeApp() {
+    try {
+        // First initialize controls
+        const canvas = document.getElementById('preview-canvas');
+        if (!canvas) {
+            throw new Error('Preview canvas not found');
+        }
+        
+        ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        canvas.width = 512;
+        canvas.height = 512;
+
+        // Then load the logo
+        await loadLogoImage();
+        console.log('Logo loaded successfully');
+        
+        // Initialize the piggy GIF
+        const piggyElement = document.getElementById('piggy-gif');
+        if (!piggyElement) {
+            throw new Error('Piggy GIF element not found');
+        }
+        
+        piggyElement.crossOrigin = "anonymous";
+        
+        // Initialize SuperGif and store in global variable
+        piggyGif = new SuperGif({ 
+            gif: piggyElement,
+            auto_play: false 
+        });
+
+        // Load the GIF
+        await new Promise((resolve) => {
+            piggyGif.load(() => {
+                console.log('GIF loaded');
+                resolve();
+            });
+        });
+
+        // Attach event listeners after elements are initialized
+        attachEventListeners();
+        
+        // Finally start the animation loop
+        startAnimationLoop();
+    } catch (error) {
+        console.error('Failed to initialize:', error);
+        // Show error to user
+        alert('Failed to initialize application: ' + error.message);
+    }
+}
+
+// Wait for DOM to be ready before initializing
+document.addEventListener('DOMContentLoaded', () => {
+    initializeApp();
+});
+
+// Add this function back (after removing the old initialization)
+function loadLogoImage() {
+    return new Promise((resolve, reject) => {
+        if (logoImage && logoImage.complete) {
+            resolve(logoImage);
+            return;
+        }
+        
+        logoImage = new Image();
+        logoImage.crossOrigin = "anonymous";
+        
+        logoImage.onload = () => {
+            console.log('Logo loaded successfully');
+            logoVisible = true;
+            resolve(logoImage);
+        };
+        
+        logoImage.onerror = (e) => {
+            console.error('Error loading logo image:', e);
+            logoAnimationActive = false;
+            logoVisible = false;
+            reject(e);
+        };
+        
+        logoImage.src = LOGO_URL;
+    });
 }
