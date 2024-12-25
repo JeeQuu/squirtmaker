@@ -53,7 +53,6 @@ const CONFIG = {
     BITRATES: {
         AUTO: 'auto',
         TELEGRAM: 'telegram',
-        DISCORD: 'discord',
         CUSTOM: 'custom'
     }
 };
@@ -258,26 +257,30 @@ function startAnimationLoop() {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    // Make sure canvas dimensions are explicitly set
     canvas.width = 512;
     canvas.height = 512;
     
     function drawBackground() {
         if (backgroundElement) {
             if (backgroundElement instanceof HTMLVideoElement) {
-                // Calculate the current time within the animation loop
-                const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * 
-                    parseInt(document.getElementById('loop-count').value)) / 1000;
+                // Calculate total animation duration
+                const loopCount = parseInt(document.getElementById('loop-count').value);
+                const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount) / 1000;
                 
-                // Get the current video time relative to the start point
-                const currentTime = (performance.now() / 1000) % totalDuration;
+                // Calculate current time in the animation
+                const elapsed = (performance.now() - startTime) / 1000;
+                const animationProgress = elapsed % totalDuration;
                 
-                // Set video time to start point plus the current loop time
-                backgroundElement.currentTime = videoStartTime + currentTime;
+                // Set video time based on start point and current progress
+                const videoTime = videoStartTime + animationProgress;
+                
+                // If video would exceed its duration, loop back to start
+                if (videoTime > backgroundElement.duration) {
+                    backgroundElement.currentTime = videoStartTime;
+                } else {
+                    backgroundElement.currentTime = videoTime;
+                }
             }
-            
-            console.log('Drawing background:', backgroundElement.tagName, 
-                        backgroundElement instanceof HTMLVideoElement ? 'video' : 'image');
             
             // Get position values from sliders (0-100)
             const xOffset = parseInt(cropX.value);
@@ -315,108 +318,51 @@ function startAnimationLoop() {
                 ? backgroundElement.videoWidth / backgroundElement.videoHeight
                 : backgroundElement.width / backgroundElement.height;
             
-            console.log('Dimensions:', {
-                containerRatio,
-                mediaRatio,
-                zoom: finalZoom,
-                xOffset,
-                yOffset
-            });
-            
             if (mediaRatio > containerRatio) {
                 height = canvas.height * finalZoom;
                 width = height * mediaRatio;
-                // Apply horizontal adjustment
                 offsetX = ((canvas.width - width) * xOffset / 100);
                 offsetY = ((canvas.height - height) * yOffset / 100);
             } else {
                 width = canvas.width * finalZoom;
                 height = width / mediaRatio;
-                // Apply vertical adjustment
                 offsetX = ((canvas.width - width) * xOffset / 100);
                 offsetY = ((canvas.height - height) * yOffset / 100);
             }
             
             ctx.drawImage(backgroundElement, offsetX, offsetY, width, height);
         } else {
-            // If no background, fill with a light gray
             ctx.fillStyle = '#f0f0f0';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
     }
     
     function animate(timestamp) {
-        if (!startTime) {
+        if (!startTime) startTime = timestamp;
+        
+        const elapsed = timestamp - startTime;
+        const loopCount = parseInt(document.getElementById('loop-count').value);
+        const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
+        
+        // Reset animation if we've completed all loops
+        if (elapsed >= totalDuration) {
             startTime = timestamp;
-            lastFrameTime = timestamp;
         }
         
-        // Only update if enough time has passed (targeting 60fps)
-        if (timestamp - lastFrameTime >= (1000 / 60)) {
-            lastFrameTime = timestamp;
-            
-            const elapsed = timestamp - startTime;
-            
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawBackground();
-            
-            // Draw logo before piggy if animation is active
-            if (logoAnimationActive && logoImage) {
-                const now = performance.now();
-                if (!logoStartTime) {
-                    logoStartTime = now;
-                    particles = [];
-                    // Always generate particles
-                    const emitX = canvas.width * 0.15;
-                    const emitY = canvas.height * 0.85;
-                    
-                    for (let i = 0; i < PARTICLE_COUNT; i++) {
-                        const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
-                        const speed = 10 + Math.random() * 5;
-                        const size = 15 + Math.random() * 12;
-                        particles.push(new Particle(emitX, emitY, angle, speed, size));
-                    }
-                }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBackground();
+        
+        // Draw logo before piggy if animation is active
+        if (logoAnimationActive && logoImage) {
+            const now = performance.now();
+            if (!logoStartTime) {
+                logoStartTime = now;
+                particles = [];
+                // Always generate particles
+                const emitX = canvas.width * 0.15;
+                const emitY = canvas.height * 0.85;
                 
-                const elapsed = now - logoStartTime;
-                const duration = 1500;
-                const progress = (elapsed % duration) / duration;
-                
-                // Calculate logo parameters
-                const startX = canvas.width * 0.3;
-                const startY = canvas.height * 0.9;
-                const endX = canvas.width * 0.8;
-                const endY = canvas.height * 0.1;
-                
-                const easeProgress = Math.pow(progress, 0.7);
-                const currentX = startX + (endX - startX) * easeProgress;
-                const currentY = startY + (endY - startY) * easeProgress;
-                
-                const startSize = 180;
-                const endSize = 80;
-                const currentSize = startSize + (endSize - startSize) * easeProgress;
-                
-                const bounce = Math.sin(progress * Math.PI * 4) * 20 * (1 - progress);
-                const startAngle = -45 * (Math.PI / 180);
-                const endAngle = 0;
-                const currentAngle = startAngle + (endAngle - startAngle) * easeProgress;
-                const opacity = progress > 0.9 ? (1 - progress) * 10 : 1;
-                
-                // Draw logo using the separate function
-                drawLogo(ctx, progress, currentX, currentY, currentSize, bounce, currentAngle, opacity);
-
-                // Update and draw particles
-                const deltaTime = elapsed % duration / 60;
-                particles = particles.filter(particle => {
-                    const alive = particle.update(deltaTime);
-                    if (alive) particle.draw(ctx);
-                    return alive;
-                });
-                
-                // Generate new particles
-                if (progress < 0.4 && particles.length < PARTICLE_COUNT && Math.random() < 0.5) {
-                    const emitX = canvas.width * 0.15;
-                    const emitY = canvas.height * 0.85;
+                for (let i = 0; i < PARTICLE_COUNT; i++) {
                     const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
                     const speed = 10 + Math.random() * 5;
                     const size = 15 + Math.random() * 12;
@@ -424,15 +370,60 @@ function startAnimationLoop() {
                 }
             }
             
-            // Draw piggy on top
-            try {
-                const frame = Math.floor((elapsed / FRAME_DURATION) % FRAMES_IN_SEQUENCE);
-                piggyGif.move_to(frame);
-                const piggyCanvas = piggyGif.get_canvas();
-                ctx.drawImage(piggyCanvas, 0, 0, canvas.width, canvas.height);
-            } catch (e) {
-                console.error('Error drawing frame:', e);
+            const elapsed = now - logoStartTime;
+            const duration = 1500;
+            const progress = (elapsed % duration) / duration;
+            
+            // Calculate logo parameters
+            const startX = canvas.width * 0.3;
+            const startY = canvas.height * 0.9;
+            const endX = canvas.width * 0.8;
+            const endY = canvas.height * 0.1;
+            
+            const easeProgress = Math.pow(progress, 0.7);
+            const currentX = startX + (endX - startX) * easeProgress;
+            const currentY = startY + (endY - startY) * easeProgress;
+            
+            const startSize = 180;
+            const endSize = 80;
+            const currentSize = startSize + (endSize - startSize) * easeProgress;
+            
+            const bounce = Math.sin(progress * Math.PI * 4) * 20 * (1 - progress);
+            const startAngle = -45 * (Math.PI / 180);
+            const endAngle = 0;
+            const currentAngle = startAngle + (endAngle - startAngle) * easeProgress;
+            const opacity = progress > 0.9 ? (1 - progress) * 10 : 1;
+            
+            // Draw logo using the separate function
+            drawLogo(ctx, progress, currentX, currentY, currentSize, bounce, currentAngle, opacity);
+
+            // Update and draw particles
+            const deltaTime = elapsed % duration / 60;
+            particles = particles.filter(particle => {
+                const alive = particle.update(deltaTime);
+                if (alive) particle.draw(ctx);
+                return alive;
+            });
+            
+            // Generate new particles
+            if (progress < 0.4 && particles.length < PARTICLE_COUNT && Math.random() < 0.5) {
+                const emitX = canvas.width * 0.15;
+                const emitY = canvas.height * 0.85;
+                const angle = (-30 + Math.random() * 60) * (Math.PI / 180);
+                const speed = 10 + Math.random() * 5;
+                const size = 15 + Math.random() * 12;
+                particles.push(new Particle(emitX, emitY, angle, speed, size));
             }
+        }
+        
+        // Draw piggy frame
+        const frame = Math.floor((elapsed / FRAME_DURATION) % FRAMES_IN_SEQUENCE);
+        try {
+            piggyGif.move_to(frame);
+            const piggyCanvas = piggyGif.get_canvas();
+            ctx.drawImage(piggyCanvas, 0, 0, canvas.width, canvas.height);
+        } catch (e) {
+            console.error('Error drawing frame:', e);
         }
         
         animationFrameId = requestAnimationFrame(animate);
@@ -441,6 +432,7 @@ function startAnimationLoop() {
     if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
     }
+    
     startTime = 0;
     animationFrameId = requestAnimationFrame(animate);
 }
@@ -449,13 +441,12 @@ async function exportForSticker() {
     const exportDiv = document.createElement('div');
     exportDiv.className = 'export-dialog';
     exportDiv.innerHTML = `
-        <h3>Choose Export Format</h3>
+        <h3>Export Sticker</h3>
         <div class="quality-settings">
             <h4>Quality Settings</h4>
             <select id="quality-preset" onchange="updateQualityControls()">
                 <option value="${CONFIG.BITRATES.AUTO}">Auto (Telegram Safe)</option>
                 <option value="${CONFIG.BITRATES.TELEGRAM}">Telegram Optimized</option>
-                <option value="${CONFIG.BITRATES.DISCORD}">Discord High Quality</option>
                 <option value="${CONFIG.BITRATES.CUSTOM}">Custom</option>
             </select>
             <div id="custom-bitrate" style="display: none;">
@@ -473,10 +464,7 @@ async function exportForSticker() {
                 <span id="bitrate-display"></span>
             </div>
         </div>
-        <div class="export-buttons">
-            <button onclick="exportAsGif()">Export as GIF</button>
-            <button onclick="exportAsVideo()">Export as Video</button>
-        </div>
+        <button onclick="exportAsVideo()">Export for Telegram</button>
         <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
     `;
     document.body.appendChild(exportDiv);
@@ -578,19 +566,11 @@ async function exportAsVideo() {
                 `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's limit!</p>` 
                 : ''}
             <div class="format-group">
-                <h4>${options.mimeType} (${fileSize.toFixed(1)}KB)</h4>
-                <button onclick="downloadSticker('${url}', 'telegram', '${options.mimeType.includes('webm') ? 'webm' : 'mp4'}')">
+                <h4>WebM/VP9 (${fileSize.toFixed(1)}KB)</h4>
+                <button onclick="downloadSticker('${url}', 'telegram', 'webm')">
                     Download for Telegram
                 </button>
-                <button onclick="downloadSticker('${url}', 'discord', '${options.mimeType.includes('webm') ? 'webm' : 'mp4'}')">
-                    Download for Discord
-                </button>
             </div>
-            ${fileSize > 256 ? `
-                <button onclick="compressAndExport(${fileSize})">
-                    Try Compress (Experimental)
-                </button>
-            ` : ''}
             <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
         `;
         document.body.appendChild(exportDiv);
@@ -974,11 +954,6 @@ function updateQualityControls() {
             const telegramSize = (estimatedBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION;
             bitrateDisplay.textContent = `Telegram: ${(estimatedBitrate/1000).toFixed(0)}Kbps (≈${telegramSize.toFixed(1)}KB)`;
             break;
-        case CONFIG.BITRATES.DISCORD:
-            estimatedBitrate = 4000000;
-            const discordSize = (estimatedBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION;
-            bitrateDisplay.textContent = `Discord: ${(estimatedBitrate/1000).toFixed(0)}Kbps (≈${discordSize.toFixed(1)}KB)`;
-            break;
         case CONFIG.BITRATES.CUSTOM:
             estimatedBitrate = parseInt(document.getElementById('custom-bitrate-value').value);
             const customSize = (estimatedBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION;
@@ -1007,9 +982,6 @@ function getBitrateForExport() {
             // Allow higher maximum for short animations
             const maxBitrate = duration <= 1.5 ? 4000000 : 3000000;
             bitrate = Math.max(minBitrate, Math.min(maxBitrate, calculatedBitrate));
-            break;
-        case CONFIG.BITRATES.DISCORD:
-            bitrate = 4000000; // Increased for better quality
             break;
         case CONFIG.BITRATES.CUSTOM:
             bitrate = parseInt(document.getElementById('custom-bitrate-value').value);
