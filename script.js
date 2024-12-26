@@ -49,12 +49,16 @@ const CONFIG = {
 };
 
 // Constants for the piggy animation
-const FRAMES_IN_SEQUENCE = CONFIG.ANIMATION.FRAMES_IN_SEQUENCE;
-const SPEEDS = CONFIG.ANIMATION.SPEEDS;
+const FRAMES_IN_SEQUENCE = 11;
+const SPEEDS = {
+    normal: 18,      // ≈ 200ms total cycle (18ms × 11 frames = 198ms)
+    squirtaholic: 11,  // ≈ 125ms total cycle (11ms × 11 frames = 121ms)
+    smooth: 30       // ≈ 335ms total cycle (30ms × 11 frames = 330ms)
+};
 const MAX_LOOPS = {
-    normal: 15,      // (3000ms / (40ms * 5frames)) ≈ 15 loops
-    squirtaholic: 24,  // (3000ms / (25ms * 5frames)) = 24 loops
-    smooth: 9       // (3000ms / (67ms * 5frames)) ≈ 9 loops
+    normal: 15,      // Adjusted for 11 frames
+    squirtaholic: 24,  // Adjusted for faster speed
+    smooth: 9        // Adjusted for slower speed
 };
 let FRAME_DURATION = SPEEDS.normal;
 let currentMaxLoops = MAX_LOOPS.normal;
@@ -459,7 +463,12 @@ async function animate() {
             piggyGif.move_to(frame);
             const piggyCanvas = piggyGif.get_canvas();
             if (piggyCanvas) {
-                ctx.drawImage(piggyCanvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+                // Move Piggy down by 5% and left by 5% of canvas dimensions
+                ctx.drawImage(piggyCanvas, 
+                    -ctx.canvas.width * 0.05,  // Offset X by -5% (move left)
+                    ctx.canvas.height * 0.05,   // Offset Y by 5% (move down)
+                    ctx.canvas.width, 
+                    ctx.canvas.height);
             }
         } catch (e) {
             console.error('Error drawing frame:', e);
