@@ -1074,17 +1074,29 @@ function initializeParticles() {
 function drawBackground() {
     if (!ctx || !backgroundElement) return;
 
-    // Return a promise that resolves when background is drawn
     return new Promise((resolve) => {
         if (backgroundElement instanceof HTMLVideoElement) {
             const loopCount = parseInt(document.getElementById('loop-count').value);
             const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount) / 1000;
             const elapsed = (performance.now() - startTime) / 1000;
-            const animationProgress = elapsed % totalDuration;
-            const targetTime = videoStartTime + animationProgress;
             
-            if (Math.abs(backgroundElement.currentTime - targetTime) > 0.1) {
-                backgroundElement.currentTime = targetTime % backgroundElement.duration;
+            // Add safety checks for video timing
+            try {
+                if (backgroundElement.readyState >= 2) {  // Video is loaded enough to play
+                    let targetTime = videoStartTime + (elapsed % totalDuration);
+                    
+                    // Make sure targetTime stays within video bounds
+                    if (isFinite(targetTime) && targetTime >= 0) {
+                        targetTime = targetTime % backgroundElement.duration;
+                        
+                        // Only update if the difference is significant
+                        if (Math.abs(backgroundElement.currentTime - targetTime) > 0.1) {
+                            backgroundElement.currentTime = targetTime;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Video timing update failed:', e);
             }
         }
 
