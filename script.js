@@ -205,7 +205,21 @@ function setupEventListeners() {
     cropY.addEventListener('input', updateTransform);
     
     document.getElementById('loop-count').addEventListener('input', function(e) {
+        document.getElementById('loop-count-display').textContent = e.target.value;
         updateDurationDisplay();
+        // Update slider progress
+        const progress = (e.target.value - e.target.min) / (e.target.max - e.target.min) * 100;
+        e.target.style.setProperty('--slider-progress', `${progress}%`);
+    });
+    
+    // Add bitrate slider listener
+    document.getElementById('custom-bitrate-value')?.addEventListener('input', function(e) {
+        const valueMbps = (e.target.value / 1000000).toFixed(1);
+        document.getElementById('bitrate-value-display').textContent = `${valueMbps} Mbps`;
+        updateQualityControls();
+        // Update slider progress
+        const progress = (e.target.value - e.target.min) / (e.target.max - e.target.min) * 100;
+        e.target.style.setProperty('--slider-progress', `${progress}%`);
     });
     
     // Add background upload listener
@@ -394,13 +408,15 @@ async function exportForSticker() {
             </select>
             <div id="custom-bitrate" style="display: none;">
                 <label>Custom Bitrate (bps):
-                    <input type="number" 
+                    <input type="range" 
                            id="custom-bitrate-value" 
                            min="100000" 
                            max="4000000" 
                            step="100000" 
                            value="1500000"
+                           class="styled-slider"
                            onchange="updateQualityControls()">
+                    <span id="bitrate-value-display">1.5 Mbps</span>
                 </label>
             </div>
             <div class="bitrate-info">
@@ -612,7 +628,7 @@ function getSupportedMimeType() {
 }
 
 function downloadSticker(url, platform, extension) {
-    const stickerName = document.getElementById('sticker-name').value.trim() || 'sticker';
+    const stickerName = 'sticker';
     const a = document.createElement('a');
     a.href = url;
     a.download = `${stickerName}_${platform}.${extension}`;

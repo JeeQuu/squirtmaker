@@ -3,7 +3,6 @@
     --piggy-pink-dark: #ff7eb3;
     --piggy-yellow: #ffd75e;
     --piggy-yellow-dark: #ffc82e;
-    --background: #ffffff;
     --text: #333333;
     --shadow: rgba(0, 0, 0, 0.1);
 }
@@ -12,21 +11,27 @@ body {
     margin: 0;
     padding: 20px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: var(--background);
+    background-image: url('https://res.cloudinary.com/dakoxedxt/image/upload/v1735421232/jeequu_httpss.mj.runEaj988I3XZg_minimalistic_stylised_splash__202427c5-9a46-499b-a22c-f0f940477456_2_pftqle.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    min-height: 100vh;
     color: var(--text);
 }
 
 .container {
-    max-width: 800px;
+    max-width: 512px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 10px;
     border-radius: 16px;
-    background: white;
-    box-shadow: 0 4px 24px var(--shadow);
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(5px);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
 }
 
 .preview-container {
-    margin-bottom: 20px;
+    margin-bottom: 10px;
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 2px 12px var(--shadow);
@@ -41,7 +46,7 @@ canvas {
 .controls {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 10px;
 }
 
 /* Modern Input Styling */
@@ -68,7 +73,7 @@ input[type="range"] {
     height: 6px;
     background: #eee;
     border-radius: 3px;
-    margin: 10px 0;
+    margin: 5px 0;
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -88,7 +93,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 /* Button Styling */
 button {
-    padding: 10px 20px;
+    padding: 8px 16px;
     border: none;
     border-radius: 8px;
     background: var(--piggy-pink);
@@ -96,7 +101,7 @@ button {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 button:hover {
@@ -115,19 +120,20 @@ button.active {
 
 /* Control Groups */
 .control-group {
-    background: #f8f8f8;
-    padding: 15px;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(3px);
+    padding: 10px;
     border-radius: 12px;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 
 .speed-controls,
 .transform-controls,
 .animation-controls {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 
 .speed-controls button {
@@ -165,8 +171,9 @@ label {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: white;
-    padding: 25px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    padding: 15px;
     border-radius: 16px;
     box-shadow: 0 4px 32px var(--shadow);
     z-index: 1000;
@@ -189,7 +196,8 @@ label {
 
 /* Loading Dialog */
 .loading {
-    background: white !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(10px) !important;
     box-shadow: 0 4px 32px var(--shadow) !important;
     border-radius: 16px !important;
 }
@@ -214,7 +222,7 @@ input[type="file"]:hover {
 #crop-y-value,
 #speed-info,
 #duration-display {
-    font-size: 14px;
+    font-size: 12px;
     color: var(--text);
     opacity: 0.8;
 }
@@ -233,5 +241,79 @@ input[type="file"]:hover {
         padding: 8px 16px;
         font-size: 13px;
     }
+}
+
+/* Hide sticker name input - we'll use a default value */
+#sticker-name {
+    display: none;
+}
+
+/* Add some breathing room at the bottom for iOS */
+@supports (-webkit-touch-callout: none) {
+    body {
+        padding-bottom: env(safe-area-inset-bottom, 20px);
+    }
+}
+
+/* Add this to your existing styles */
+.main-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.main-controls button {
+    flex: 1;
+    max-width: 200px;
+}
+
+.loop-controls {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(3px);
+    padding: 10px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+/* Improved slider styling */
+.styled-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    background: #eee;
+    border-radius: 3px;
+    margin: 10px 0;
+}
+
+.styled-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--piggy-pink);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+}
+
+.styled-slider::-webkit-slider-thumb:hover {
+    background: var(--piggy-pink-dark);
+    transform: scale(1.1);
+}
+
+.styled-slider::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, var(--piggy-pink) var(--slider-progress, 0%), #eee var(--slider-progress, 0%));
+}
+
+/* Value displays */
+#loop-count-display,
+#bitrate-value-display {
+    font-weight: 600;
+    color: var(--piggy-pink-dark);
 }
  

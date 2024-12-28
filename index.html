@@ -35,21 +35,24 @@
             <img id="piggy-gif" 
                  src="https://res.cloudinary.com/dakoxedxt/image/upload/v1735254712/ezgif.com-animated-gif-maker_ks3mtk.gif" 
                  rel:animated_src="https://res.cloudinary.com/dakoxedxt/image/upload/v1735254712/ezgif.com-animated-gif-maker_ks3mtk.gif" />
+            <input type="hidden" id="sticker-name" value="sticker">
         </div>
         <div class="preview-container">
             <canvas id="preview-canvas" width="512" height="512"></canvas>
         </div>
         
         <div class="controls">
-            <div class="upload-controls">
-                <div class="upload-section">
-                    <label>Sticker Name:</label>
-                    <input type="text" id="sticker-name" placeholder="My Sticker" value="sticker">
-                </div>
-                <div class="upload-section">
-                    <label>Upload Background:</label>
-                    <input type="file" id="background-upload" accept="image/*,video/*">
-                </div>
+            <div class="main-controls">
+                <input type="file" 
+                       id="background-upload" 
+                       accept="image/*,video/*" 
+                       style="display: none">
+                <button class="upload-btn" onclick="document.getElementById('background-upload').click()">
+                    📷 Add Background
+                </button>
+                <button class="squirt-toggle-btn" onclick="toggleSquirt()">
+                    <span class="squirt-status">🌊 Add SQUIRT</span>
+                </button>
             </div>
             <div class="control-group">
                 <div class="transform-controls">
@@ -78,15 +81,16 @@
                     <button onclick="setSpeed('smooth')">Smooth</button>
                     <span id="speed-info">normal</span>
                 </div>
-                <div class="animation-controls">
-                    <button class="squirt-toggle-btn" onclick="toggleSquirt()">
-                        <span class="squirt-status">🌊 Add SQUIRT</span>
-                    </button>
-                </div>
             </div>
             <div class="loop-controls">
-                <label for="loop-count">Loop Count:</label>
-                <input type="number" id="loop-count" min="1" value="3">
+                <label>Loop Count: <span id="loop-count-display">3</span></label>
+                <input type="range" 
+                       id="loop-count" 
+                       class="styled-slider"
+                       min="1" 
+                       max="24" 
+                       value="3"
+                       step="1">
                 <span id="duration-display"></span>
             </div>
             <div class="video-controls" style="display: none;">
