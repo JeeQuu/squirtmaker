@@ -29,8 +29,8 @@
     </style>
 </head>
 <body>
+    <div style="display: none;" id="gif-container"></div>
     <div class="container">
-        <!-- Hidden container for GIF processing -->
         <div style="display:none;">
             <img id="piggy-gif" 
                  src="https://res.cloudinary.com/dakoxedxt/image/upload/v1735254712/ezgif.com-animated-gif-maker_ks3mtk.gif" 
@@ -51,68 +51,49 @@
                     <input type="file" id="background-upload" accept="image/*,video/*">
                 </div>
             </div>
-            <div class="adjustment-controls">
-                <div class="speed-controls">
-                    <label>Animation Speed: <span id="speed-info">normal</span></label>
-                    <div class="speed-buttons">
-                        <button onclick="setSpeed('smooth')">Smooth</button>
-                        <button onclick="setSpeed('normal')">Normal</button>
-                        <button onclick="setSpeed('squirtaholic')">Squirtaholic</button>
+            <div class="control-group">
+                <div class="transform-controls">
+                    <div class="zoom-controls">
+                        <input type="range" id="zoom" min="10" max="300" step="10" value="100">
+                        <span id="zoom-value">Zoom: 1x</span>
                     </div>
-                </div>
-                <div class="video-timing">
-                    <div class="time-display">
-                        Duration: <span id="duration-display">0.0s</span>
-                    </div>
-                    <div class="start-frame-control" style="display: none;">
-                        <label>Video Start Point:</label>
-                        <input type="range" id="start-frame" min="0" max="100" value="0">
-                        <span id="start-time-display">0.0s</span>
-                    </div>
-                </div>
-                <div class="loop-controls">
-                    <label>
-                        Number of Loops: <span id="loop-count-display">1</span>
-                    </label>
-                    <input type="range" 
-                           id="loop-count" 
-                           min="1" 
-                           max="24" 
-                           value="1" 
-                           class="styled-slider">
-                </div>
-                <div class="slider-group">
-                    <label>Zoom</label>
-                    <input type="range" id="zoom" min="100" max="300" value="100">
-                    <button class="zoom-animate-btn" onclick="toggleZoomAnimation()">
-                        <span class="zoom-status">🔄 Animate Zoom</span>
-                    </button>
-                </div>
-                <div class="position-controls">
-                    <div class="slider-group">
-                        <label>Horizontal</label>
-                        <input type="range" id="crop-x" min="0" max="100" value="50">
-                    </div>
-                    <div class="slider-group">
-                        <label>Vertical</label>
-                        <input type="range" id="crop-y" min="0" max="100" value="50">
+                    <div class="crop-controls">
+                        <input type="range" id="crop-x" min="-100" max="100" value="0">
+                        <span id="crop-x-value">Move X: 0</span>
+                        <input type="range" id="crop-y" min="-100" max="100" value="0">
+                        <span id="crop-y-value">Move Y: 0</span>
                     </div>
                     <div class="mirror-controls">
-                        <button class="mirror-btn" onclick="toggleMirrorX()">
+                        <button class="mirror-x-btn" onclick="toggleMirrorX()">
                             <span class="mirror-x-status">↔️ Flip X</span>
                         </button>
-                        <button class="mirror-btn" onclick="toggleMirrorY()">
+                        <button class="mirror-y-btn" onclick="toggleMirrorY()">
                             <span class="mirror-y-status">↕️ Flip Y</span>
                         </button>
                     </div>
                 </div>
-                <div class="logo-controls">
-                    <button class="logo-animate-btn" onclick="toggleLogoAnimation()">
-                        <span class="logo-status">🌊 Add SQUIRT</span>
+                <div class="speed-controls">
+                    <button onclick="setSpeed('normal')">Normal</button>
+                    <button onclick="setSpeed('squirtaholic')">Squirtaholic</button>
+                    <button onclick="setSpeed('smooth')">Smooth</button>
+                    <span id="speed-info">normal</span>
+                </div>
+                <div class="animation-controls">
+                    <button class="squirt-toggle-btn" onclick="toggleSquirt()">
+                        <span class="squirt-status">🌊 Add SQUIRT</span>
                     </button>
-                    <button class="particles-toggle-btn" onclick="toggleParticles()">
-                        <span class="particles-status">💧 Hide Logo</span>
-                    </button>
+                </div>
+            </div>
+            <div class="loop-controls">
+                <label for="loop-count">Loop Count:</label>
+                <input type="number" id="loop-count" min="1" value="3">
+                <span id="duration-display"></span>
+            </div>
+            <div class="video-controls" style="display: none;">
+                <div class="start-frame-control">
+                    <label for="start-frame">Start Frame:</label>
+                    <input type="range" id="start-frame" min="0" max="100" value="0">
+                    <span id="start-time-display">0.00s</span>
                 </div>
             </div>
             <button 
@@ -122,10 +103,6 @@
                 Export Sticker
             </button>
         </div>
-    </div>
-    <div id="high-quality-container">
-        <input type="checkbox" id="high-quality">
-        <label for="high-quality">High Quality Export</label>
     </div>
     <script src="script.js"></script>
 </body>
