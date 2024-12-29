@@ -750,74 +750,73 @@ async function exportAsVideo() {
         const normalBitrate = getBitrateForExport();
         
         const chunks = [];
-        let isFirstChunk = true;
         
         const recordingPromise = new Promise((resolve, reject) => {
             let recordingStartTime = Date.now();
             
-            const startRecording = (bitrate) => {
-                const options = {
-                    mimeType: 'video/webm;codecs=vp9',
-                    videoBitsPerSecond: bitrate
-                };
-                
-                const recorder = new MediaRecorder(mediaStream, options);
-                
-                recorder.ondataavailable = e => {
-                    chunks.push(e.data);
-                    if (isFirstChunk) {
-                        isFirstChunk = false;
-                        // Start new recording with normal bitrate
-                        startRecording(normalBitrate);
-                    }
-                };
-                
-                recorder.onstop = () => {
-                    if (!isFirstChunk) {
-                        loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Processing video...</p>';
-                        const blob = new Blob(chunks, { type: 'video/webm;codecs=vp9' });
-                        resolve(blob);
-                    }
-                };
-                
-                recorder.onerror = reject;
-
-                // Start recording
-                recorder.start(isFirstChunk ? 100 : undefined);
-                
-                // Stop after duration if this is the main recording
-                if (!isFirstChunk) {
-                    setTimeout(() => recorder.stop(), duration * 1000);
-                }
-                
-                return recorder;
+            // Create a single recorder with high quality
+            const options = {
+                mimeType: 'video/webm;codecs=vp9',
+                videoBitsPerSecond: initialBitrate
             };
+            
+            const recorder = new MediaRecorder(mediaStream, options);
+            
+            recorder.ondataavailable = e => {
+                if (e.data.size > 0) {
+                    chunks.push(e.data);
+                }
+            };
+            
+            recorder.onstop = () => {
+                try {
+                    const blob = new Blob(chunks, { type: 'video/webm;codecs=vp9' });
+                    resolve(blob);
+                } catch (error) {
+                    reject(error);
+                }
+            };
+            
+            recorder.onerror = reject;
 
             const updateProgress = () => {
                 const elapsed = (Date.now() - recordingStartTime) / 1000;
                 const progress = Math.min(100, (elapsed / duration) * 100);
                 loadingDiv.innerHTML = `<h3>Generating sticker...</h3><p>Recording: ${progress.toFixed(0)}%</p>`;
-                if (elapsed < duration) {
+                if (elapsed < duration && recorder.state === 'recording') {
                     requestAnimationFrame(updateProgress);
                 }
             };
+
+            // Reset animation
+            startTime = 0;
+            if (piggySprite) {
+                piggySprite.gotoAndPlay(0);
+            }
+
+            // Start recording
+            recorder.start();
             updateProgress();
 
-            // Start initial high-quality recording
-            startRecording(initialBitrate);
+            // Stop recording after duration
+            setTimeout(() => {
+                if (recorder.state === 'recording') {
+                    try {
+                        recorder.stop();
+                    } catch (error) {
+                        reject(error);
+                    }
+                }
+            }, duration * 1000 + 100);
         });
 
-        // Reset animation
-        startTime = 0;
-        if (piggySprite) {
-            piggySprite.gotoAndPlay(0);
-        }
-
         const blob = await recordingPromise;
-        loadingDiv.remove();
-
+        loadingDiv.innerHTML = '<h3>Processing...</h3>';
+        
         const url = URL.createObjectURL(blob);
         const fileSize = blob.size / 1024;
+
+        loadingDiv.remove();
 
         const exportDiv = document.createElement('div');
         exportDiv.className = 'export-dialog';
@@ -839,7 +838,7 @@ async function exportAsVideo() {
     } catch (error) {
         console.error('Export failed:', error);
         if (loadingDiv) loadingDiv.remove();
-        alert(`Failed to export: ${error.message}\n\nSupported formats: ${MediaRecorder.isTypeSupported('video/mp4') ? 'MP4' : 'No MP4'}, ${MediaRecorder.isTypeSupported('video/webm') ? 'WebM' : 'No WebM'}`);
+        alert(`Failed to export: ${error.message}`);
     }
 }
 
