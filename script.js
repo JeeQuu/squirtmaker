@@ -367,8 +367,35 @@ function initializeGif(gifUrl) {
     });
 }
 
+function initializeBackgroundVideo() {
+    const video = document.querySelector('.video-background video');
+    if (video) {
+        // Force play on iOS
+        video.play().catch(function(error) {
+            console.log("Video play failed:", error);
+            
+            // Add click-to-play fallback if needed
+            document.body.addEventListener('touchstart', function() {
+                video.play().catch(function(error) {
+                    console.log("Video play failed after touch:", error);
+                });
+            }, { once: true });
+        });
+
+        // Ensure video stays muted (iOS requirement)
+        video.muted = true;
+        
+        // Add these attributes programmatically as well
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+    }
+}
+
 async function initialize() {
     try {
+        // Add this near the start of initialize
+        initializeBackgroundVideo();
+        
         // Wait for DOM content to be fully loaded
         await new Promise(resolve => {
             if (document.readyState === 'complete') {

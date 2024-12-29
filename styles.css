@@ -370,6 +370,7 @@ input[type="range"].styled-slider {
     min-width: 100%;
     min-height: 100%;
     z-index: -1;
+    background: #000; /* Fallback color */
 }
 
 .video-background video {
@@ -382,6 +383,15 @@ input[type="range"].styled-slider {
     width: auto;
     height: auto;
     object-fit: cover;
+    -webkit-transform: translate(-50%, -50%);
+    -webkit-object-fit: cover;
+}
+
+/* Add support for older iOS versions */
+@supports (-webkit-touch-callout: none) {
+    .video-background video {
+        position: fixed;
+    }
 }
 
 .error-message {
