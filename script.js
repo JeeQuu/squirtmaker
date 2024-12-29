@@ -159,11 +159,11 @@ class ParticleEmitter {
         this.texture = texture;
         this.particles = [];
         this.active = false;
-        this.maxParticles = 100;  // Back to higher count
-        this.particlesPerFrame = 4;  // Emit more particles per frame
+        this.maxParticles = 100;  // Keep this the same
+        this.particlesPerFrame = 4;  // Keep emission rate
         this.particlePool = [];
         this.lastEmitTime = 0;
-        this.emitInterval = 16; // Sync with typical frame rate (60fps)
+        this.emitInterval = 16;
     }
 
     createParticle() {
@@ -173,18 +173,18 @@ class ParticleEmitter {
         particle.x = CONFIG.CANVAS.WIDTH * 0.32;
         particle.y = CONFIG.CANVAS.HEIGHT * 0.92;
         
-        // Tighter angle control for shower effect
-        const angle = -Math.PI/3 + (Math.random() * 0.1);
-        const speed = 7 + Math.random(); // More consistent speed
+        // Adjust angle and speed for higher/longer trajectory
+        const angle = -Math.PI/2.8 + (Math.random() * 0.1); // More upward angle (-π/2.8 instead of -π/3)
+        const speed = 8.5 + Math.random(); // Increased base speed from 7 to 8.5
         
         particle.velocity = {
             x: Math.cos(angle) * speed,
             y: Math.sin(angle) * speed
         };
         
-        particle.gravity = 0.3;
+        particle.gravity = 0.25; // Reduced gravity for longer airtime
         particle.alpha = 0.85;
-        particle.scale.set(0.35 + Math.random() * 0.1);
+        particle.scale.set(0.45 + Math.random() * 0.15); // Increased size (was 0.35 + 0.1)
         
         this.container.addChild(particle);
         this.particles.push(particle);
@@ -739,54 +739,79 @@ async function exportAsVideo() {
         loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Recording animation...</p>';
         document.body.appendChild(loadingDiv);
 
-        const mediaStream = pixiApp.view.captureStream(30); // Using PIXI canvas instead
+        const mediaStream = pixiApp.view.captureStream(30);
         
-        const options = {
-            mimeType: getSupportedMimeType(),
-            videoBitsPerSecond: getBitrateForExport()
-        };
-
-        const recorder = new MediaRecorder(mediaStream, options);
-        const chunks = [];
-        
-        recorder.ondataavailable = e => chunks.push(e.data);
-
-        const recordingPromise = new Promise((resolve, reject) => {
-            let recordingStartTime = Date.now();
-            
-            recorder.onstop = () => {
-                loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Processing video...</p>';
-                const blob = new Blob(chunks, { type: options.mimeType });
-                resolve(blob);
-            };
-            
-            recorder.onerror = reject;
-
-            const updateProgress = () => {
-                if (recorder.state === 'recording') {
-                    const elapsed = (Date.now() - recordingStartTime) / 1000;
-                    const progress = Math.min(100, (elapsed / duration) * 100);
-                    loadingDiv.innerHTML = `<h3>Generating sticker...</h3><p>Recording: ${progress.toFixed(0)}%</p>`;
-                    if (elapsed < duration) {
-                        requestAnimationFrame(updateProgress);
-                    }
-                }
-            };
-            updateProgress();
-        });
-
         const loopCount = parseInt(document.getElementById('loop-count').value);
         const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
         const duration = (FRAME_DURATION * totalFrames) / 1000;
 
-        startTime = 0;
-        recorder.start();
+        // Force high quality for initial keyframe
+        const initialBitrate = 4000000;
+        const normalBitrate = getBitrateForExport();
         
-        setTimeout(() => {
-            if (recorder.state === 'recording') {
-                recorder.stop();
-            }
-        }, duration * 1000 + 100);
+        const chunks = [];
+        let isFirstChunk = true;
+        
+        const recordingPromise = new Promise((resolve, reject) => {
+            let recordingStartTime = Date.now();
+            
+            const startRecording = (bitrate) => {
+                const options = {
+                    mimeType: 'video/webm;codecs=vp9',
+                    videoBitsPerSecond: bitrate
+                };
+                
+                const recorder = new MediaRecorder(mediaStream, options);
+                
+                recorder.ondataavailable = e => {
+                    chunks.push(e.data);
+                    if (isFirstChunk) {
+                        isFirstChunk = false;
+                        // Start new recording with normal bitrate
+                        startRecording(normalBitrate);
+                    }
+                };
+                
+                recorder.onstop = () => {
+                    if (!isFirstChunk) {
+                        loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Processing video...</p>';
+                        const blob = new Blob(chunks, { type: 'video/webm;codecs=vp9' });
+                        resolve(blob);
+                    }
+                };
+                
+                recorder.onerror = reject;
+
+                // Start recording
+                recorder.start(isFirstChunk ? 100 : undefined);
+                
+                // Stop after duration if this is the main recording
+                if (!isFirstChunk) {
+                    setTimeout(() => recorder.stop(), duration * 1000);
+                }
+                
+                return recorder;
+            };
+
+            const updateProgress = () => {
+                const elapsed = (Date.now() - recordingStartTime) / 1000;
+                const progress = Math.min(100, (elapsed / duration) * 100);
+                loadingDiv.innerHTML = `<h3>Generating sticker...</h3><p>Recording: ${progress.toFixed(0)}%</p>`;
+                if (elapsed < duration) {
+                    requestAnimationFrame(updateProgress);
+                }
+            };
+            updateProgress();
+
+            // Start initial high-quality recording
+            startRecording(initialBitrate);
+        });
+
+        // Reset animation
+        startTime = 0;
+        if (piggySprite) {
+            piggySprite.gotoAndPlay(0);
+        }
 
         const blob = await recordingPromise;
         loadingDiv.remove();
@@ -816,6 +841,13 @@ async function exportAsVideo() {
         if (loadingDiv) loadingDiv.remove();
         alert(`Failed to export: ${error.message}\n\nSupported formats: ${MediaRecorder.isTypeSupported('video/mp4') ? 'MP4' : 'No MP4'}, ${MediaRecorder.isTypeSupported('video/webm') ? 'WebM' : 'No WebM'}`);
     }
+}
+
+// Add this helper function to trim the buffer frames
+async function trimBuffer(blob, bufferDuration) {
+    // For now, return the original blob
+    // In a future update, we could implement actual video trimming
+    return blob;
 }
 
 function getSupportedMimeType() {
