@@ -733,10 +733,11 @@ function getBitrateForExport() {
 }
 
 async function exportAsVideo() {
+    let loadingDiv = null;
     try {
-        const loadingDiv = document.createElement('div');
+        loadingDiv = document.createElement('div');
         loadingDiv.className = 'loading';
-        loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Recording animation...</p>';
+        loadingDiv.innerHTML = '<h3>Preparing...</h3>';
         document.body.appendChild(loadingDiv);
 
         const mediaStream = pixiApp.view.captureStream(30);
@@ -745,28 +746,18 @@ async function exportAsVideo() {
         const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
         const duration = (FRAME_DURATION * totalFrames) / 1000;
 
-        // Force high quality for initial keyframe
-        const initialBitrate = 4000000;
-        const normalBitrate = getBitrateForExport();
-        
+        // Use a single high bitrate for the entire recording
+        const options = {
+            mimeType: 'video/webm;codecs=vp9',
+            videoBitsPerSecond: 3000000 // Fixed 3Mbps
+        };
+
         const chunks = [];
         
         const recordingPromise = new Promise((resolve, reject) => {
-            let recordingStartTime = Date.now();
-            
-            // Create a single recorder with high quality
-            const options = {
-                mimeType: 'video/webm;codecs=vp9',
-                videoBitsPerSecond: initialBitrate
-            };
-            
             const recorder = new MediaRecorder(mediaStream, options);
             
-            recorder.ondataavailable = e => {
-                if (e.data.size > 0) {
-                    chunks.push(e.data);
-                }
-            };
+            recorder.ondataavailable = e => chunks.push(e.data);
             
             recorder.onstop = () => {
                 try {
@@ -779,44 +770,33 @@ async function exportAsVideo() {
             
             recorder.onerror = reject;
 
-            const updateProgress = () => {
-                const elapsed = (Date.now() - recordingStartTime) / 1000;
-                const progress = Math.min(100, (elapsed / duration) * 100);
-                loadingDiv.innerHTML = `<h3>Generating sticker...</h3><p>Recording: ${progress.toFixed(0)}%</p>`;
-                if (elapsed < duration && recorder.state === 'recording') {
-                    requestAnimationFrame(updateProgress);
-                }
-            };
-
-            // Reset animation
+            // Reset animation state
             startTime = 0;
             if (piggySprite) {
                 piggySprite.gotoAndPlay(0);
             }
 
-            // Start recording
+            loadingDiv.innerHTML = '<h3>Recording...</h3>';
             recorder.start();
-            updateProgress();
 
-            // Stop recording after duration
             setTimeout(() => {
-                if (recorder.state === 'recording') {
-                    try {
+                try {
+                    if (recorder.state === 'recording') {
+                        loadingDiv.innerHTML = '<h3>Finalizing...</h3>';
                         recorder.stop();
-                    } catch (error) {
-                        reject(error);
                     }
+                } catch (error) {
+                    reject(error);
                 }
             }, duration * 1000 + 100);
         });
 
         const blob = await recordingPromise;
-        loadingDiv.innerHTML = '<h3>Processing...</h3>';
-        
         const url = URL.createObjectURL(blob);
         const fileSize = blob.size / 1024;
 
         loadingDiv.remove();
+        loadingDiv = null;
 
         const exportDiv = document.createElement('div');
         exportDiv.className = 'export-dialog';
@@ -838,7 +818,7 @@ async function exportAsVideo() {
     } catch (error) {
         console.error('Export failed:', error);
         if (loadingDiv) loadingDiv.remove();
-        alert(`Failed to export: ${error.message}`);
+        alert(`Export failed: ${error.message}`);
     }
 }
 
