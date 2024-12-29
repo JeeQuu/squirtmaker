@@ -19,7 +19,6 @@ let isSquirtMode = false;
 
 // GIF URLs
 const DEFAULT_GIF_URL = 'https://res.cloudinary.com/dakoxedxt/image/upload/v1735254712/ezgif.com-animated-gif-maker_ks3mtk.gif';
-const SQUIRT_GIF_URL = 'https://res.cloudinary.com/dakoxedxt/image/upload/v1735396014/piggysquirt.gif';
 
 // Add piggyGif to globals
 let piggyGif = null;
@@ -68,6 +67,44 @@ let startTime = 0;
 // Mirror states
 let mirrorX = false;
 let mirrorY = false;
+
+// Add these variables at the top with other globals
+let particles = [];
+const PARTICLE_COUNT = 12;  // Increased number of particles
+const PARTICLE_LIFETIME = 1500;  // Longer lifetime
+let particleSystemActive = false;
+
+class Particle {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        const angleVariation = (Math.random() - 0.5) * 0.3;
+        this.speedX = 4 + Math.random() * 2;
+        this.speedY = -4 - Math.random() * 2;
+        this.gravity = 0.12;
+        this.life = 1.0;
+        this.decay = 0.006 + Math.random() * 0.003; // Even slower decay
+        this.size = 3 + Math.random() * 4; // Slightly larger particles
+        this.opacity = 0.8 + Math.random() * 0.2; // Higher base opacity
+    }
+
+    update() {
+        this.x += this.speedX;
+        this.speedY += this.gravity;
+        this.y += this.speedY;
+        this.life -= this.decay;
+        
+        return this.life > 0;
+    }
+
+    draw(ctx) {
+        // Brighter blue color and higher opacity
+        ctx.fillStyle = `rgba(134, 209, 232, ${this.life * this.opacity})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
 
 function updateDurationDisplay() {
     const loopCount = parseInt(document.getElementById('loop-count').value);
@@ -134,26 +171,26 @@ function handleBackgroundUpload(e) {
     
     const isVideo = file.type.startsWith('video/');
     
-    if (isVideo) {
-        backgroundElement = document.createElement('video');
-        backgroundElement.crossOrigin = "anonymous";
-        backgroundElement.loop = true;
-        backgroundElement.muted = true;
-        backgroundElement.autoplay = true;
-        backgroundElement.playsinline = true;
-        backgroundElement.src = URL.createObjectURL(file);
-        
+        if (isVideo) {
+            backgroundElement = document.createElement('video');
+            backgroundElement.crossOrigin = "anonymous";
+            backgroundElement.loop = true;
+            backgroundElement.muted = true;
+            backgroundElement.autoplay = true;
+            backgroundElement.playsinline = true;
+            backgroundElement.src = URL.createObjectURL(file);
+            
         document.querySelector('.video-controls').style.display = 'block';
-        
-        backgroundElement.onloadedmetadata = () => {
-            updateVideoControls();
+            
+            backgroundElement.onloadedmetadata = () => {
+                updateVideoControls();
             startAnimation(); // Restart animation when video is ready
-        };
+            };
         
         backgroundElement.play().catch(e => console.error('Video play failed:', e));
-    } else {
-        backgroundElement = new Image();
-        backgroundElement.crossOrigin = "anonymous";
+        } else {
+            backgroundElement = new Image();
+            backgroundElement.crossOrigin = "anonymous";
         backgroundElement.onload = () => {
             document.querySelector('.video-controls').style.display = 'none';
             startAnimation(); // Restart animation when image is loaded
@@ -232,18 +269,20 @@ async function toggleSquirt() {
     
     try {
         isSquirtMode = !isSquirtMode;
-        const gifUrl = isSquirtMode ? SQUIRT_GIF_URL : DEFAULT_GIF_URL;
-        
         const squirtStatus = document.querySelector('.squirt-status');
         squirtStatus.textContent = isSquirtMode ? '🌊 Remove SQUIRT' : '🌊 Add SQUIRT';
         
-        piggyGif = await initializeGif(gifUrl);
+        // Toggle particle system
+        particleSystemActive = isSquirtMode;
+        if (!isSquirtMode) {
+            particles = [];  // Clear particles when disabled
+        }
         
         btn.classList.toggle('active', isSquirtMode);
     } catch (error) {
         console.error('Failed to toggle squirt mode:', error);
-        alert('Failed to load GIF. Please try again.');
         isSquirtMode = !isSquirtMode;
+        particleSystemActive = false;
     } finally {
         btn.disabled = false;
     }
@@ -258,7 +297,7 @@ function updatePreview() {
 function animate() {
     const now = performance.now();
     if (!startTime) startTime = now;
-    
+
     const elapsed = now - startTime;
     const loopCount = parseInt(document.getElementById('loop-count').value);
     const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
@@ -274,14 +313,25 @@ function animate() {
         drawBackground();
     }
     
-    // Then draw piggy on top
+    // Draw particles BEFORE piggy
+    if (isSquirtMode) {
+        updateParticles();
+    }
+    
+    // Draw piggy with adjusted size and position
     if (piggyGif) {
         const frame = Math.floor((elapsed / FRAME_DURATION) % FRAMES_IN_SEQUENCE);
         try {
             piggyGif.move_to(frame);
             const piggyCanvas = piggyGif.get_canvas();
             if (piggyCanvas) {
-                ctx.drawImage(piggyCanvas, 0, 0, canvas.width, canvas.height);
+                // Calculate new dimensions (95% of original)
+                const newWidth = canvas.width * 0.95;
+                const newHeight = canvas.height * 0.95;
+                // Adjust position (move slightly left and maintain bottom alignment)
+                const xOffset = -canvas.width * 0.03; // Move 3% left
+                const yOffset = canvas.height * 0.05; // Keep bottom aligned
+                ctx.drawImage(piggyCanvas, xOffset, yOffset, newWidth, newHeight);
             }
         } catch (e) {
             console.error('Error drawing frame:', e);
@@ -636,6 +686,46 @@ function downloadSticker(url, platform, extension) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const video = document.querySelector('.video-background video');
+    
+    video.addEventListener('loadeddata', function() {
+        console.log('Video loaded successfully');
+    });
+    
+    video.addEventListener('error', function(e) {
+        console.error('Error loading video:', e);
+    });
+    
+    // Check video status every second
+    setInterval(() => {
+        console.log('Video ready state:', video.readyState);
+        console.log('Video paused:', video.paused);
+        console.log('Video current time:', video.currentTime);
+    }, 1000);
+});
+
+function updateParticles() {
+    if (!particleSystemActive) return;
+
+    if (particles.length < PARTICLE_COUNT && Math.random() < 0.4) {
+        particles.push(new Particle(
+            canvas.width * 0.32,  // Adjusted to match new piggy position
+            canvas.height * 0.85
+        ));
+    }
+
+    // Update and remove dead particles
+    particles = particles.filter(particle => particle.update());
+
+    // Enhanced particle effects
+    ctx.save();
+    ctx.shadowBlur = 3; // Increased blur
+    ctx.shadowColor = 'rgba(134, 209, 232, 0.5)'; // Brighter shadow
+    particles.forEach(particle => particle.draw(ctx));
+    ctx.restore();
 }
 
 // Initialize the application
