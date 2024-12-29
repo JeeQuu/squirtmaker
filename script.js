@@ -504,7 +504,7 @@ async function toggleSquirt() {
     try {
         isSquirtMode = !isSquirtMode;
         const squirtStatus = document.querySelector('.squirt-status');
-        squirtStatus.textContent = isSquirtMode ? '🌊 Remove SQUIRT' : '🌊 Add SQUIRT';
+        squirtStatus.textContent = isSquirtMode ? '🌊 Off' : '🌊 Squirt';
         
         // Toggle particle emitter
         if (emitter) {
@@ -516,7 +516,7 @@ async function toggleSquirt() {
         }
         
         btn.classList.toggle('active', isSquirtMode);
-        animationStartTime = 0; // Reset animation timing when toggling squirt
+        animationStartTime = 0;
     } catch (error) {
         console.error('Failed to toggle squirt mode:', error);
         isSquirtMode = !isSquirtMode;
