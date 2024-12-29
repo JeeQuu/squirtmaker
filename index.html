@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/gh/buzzfeed/libgif-js@master/libgif.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/jnordberg/gif.js/dist/gif.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/jnordberg/gif.js/dist/gif.worker.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
     <link rel="icon" type="image/x-icon" href="data:image/x-icon;,">
     <style>
         .loading {
@@ -36,6 +37,10 @@
     </div>
     <div style="display: none;" id="gif-container"></div>
     <div class="container">
+        <input type="file" 
+               id="background-upload" 
+               accept="image/*,video/*" 
+               style="display: none">
         <div style="display:none;">
             <img id="piggy-gif" 
                  src="https://res.cloudinary.com/dakoxedxt/image/upload/v1735254712/ezgif.com-animated-gif-maker_ks3mtk.gif" 
@@ -47,68 +52,53 @@
         </div>
         
         <div class="controls">
-            <div class="main-controls">
-                <input type="file" 
-                       id="background-upload" 
-                       accept="image/*,video/*" 
-                       style="display: none">
-                <button class="upload-btn" onclick="document.getElementById('background-upload').click()">
-                    📷 Add Background
+            <div class="action-buttons">
+                <button class="upload-btn primary-btn" onclick="document.getElementById('background-upload').click()">
+                    📷 Background
                 </button>
-                <button class="squirt-toggle-btn" onclick="toggleSquirt()">
+                <button class="squirt-toggle-btn effect-btn" onclick="toggleSquirt()">
                     <span class="squirt-status">🌊 Add SQUIRT</span>
                 </button>
+                <button class="mirror-x-btn transform-btn">
+                    ↔️ Flip X
+                </button>
+                <button class="mirror-y-btn transform-btn">
+                    ↕️ Flip Y
+                </button>
             </div>
-            <div class="control-group">
+
+            <div class="speed-buttons">
+                <button onclick="setSpeed('normal')">Normal</button>
+                <button onclick="setSpeed('squirtaholic')">Squirtaholic</button>
+                <button onclick="setSpeed('smooth')">Smooth</button>
+                <span id="speed-info">normal</span>
+            </div>
+
+            <div class="sliders-group">
                 <div class="transform-controls">
                     <div class="zoom-controls">
-                        <input type="range" id="zoom" min="10" max="300" step="10" value="100">
-                        <span id="zoom-value">Zoom: 1x</span>
+                        <input type="range" id="zoom" class="styled-slider" min="10" max="300" step="10" value="100">
+                        <span id="zoom-value">Zoom: 100%</span>
                     </div>
-                    <div class="crop-controls">
-                        <input type="range" id="crop-x" min="-100" max="100" value="0">
+                    <div class="zoom-animation-controls">
+                        <input type="range" id="zoom-animation" class="styled-slider" min="0" max="100" value="0" step="1">
+                        <span id="zoom-animation-value">Zoom Animation: 0%</span>
+                    </div>
+                    <div class="position-controls">
+                        <input type="range" id="crop-x" class="styled-slider" min="-100" max="100" value="0">
                         <span id="crop-x-value">Move X: 0</span>
-                        <input type="range" id="crop-y" min="-100" max="100" value="0">
+                        <input type="range" id="crop-y" class="styled-slider" min="-100" max="100" value="0">
                         <span id="crop-y-value">Move Y: 0</span>
                     </div>
-                    <div class="mirror-controls">
-                        <button class="mirror-x-btn" onclick="toggleMirrorX()">
-                            <span class="mirror-x-status">↔️ Flip X</span>
-                        </button>
-                        <button class="mirror-y-btn" onclick="toggleMirrorY()">
-                            <span class="mirror-y-status">↕️ Flip Y</span>
-                        </button>
+                    <div class="loop-controls">
+                        <input type="range" id="loop-count" class="styled-slider" min="1" max="24" value="3" step="1">
+                        <span id="loop-count-value">Loop Count: <span id="loop-count-display">3</span></span>
+                        <span id="duration-display"></span>
                     </div>
                 </div>
-                <div class="speed-controls">
-                    <button onclick="setSpeed('normal')">Normal</button>
-                    <button onclick="setSpeed('squirtaholic')">Squirtaholic</button>
-                    <button onclick="setSpeed('smooth')">Smooth</button>
-                    <span id="speed-info">normal</span>
-                </div>
             </div>
-            <div class="loop-controls">
-                <label>Loop Count: <span id="loop-count-display">3</span></label>
-                <input type="range" 
-                       id="loop-count" 
-                       class="styled-slider"
-                       min="1" 
-                       max="24" 
-                       value="3"
-                       step="1">
-                <span id="duration-display"></span>
-            </div>
-            <div class="video-controls" style="display: none;">
-                <div class="start-frame-control">
-                    <label for="start-frame">Start Frame:</label>
-                    <input type="range" id="start-frame" min="0" max="100" value="0">
-                    <span id="start-time-display">0.00s</span>
-                </div>
-            </div>
-            <button 
-                aria-label="Export sticker"
-                role="button"
-                onclick="exportForSticker()">
+
+            <button class="export-btn" onclick="exportForSticker()">
                 Export Sticker
             </button>
         </div>

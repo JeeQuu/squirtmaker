@@ -70,39 +70,168 @@ let mirrorY = false;
 
 // Add these variables at the top with other globals
 let particles = [];
-const PARTICLE_COUNT = 12;  // Increased number of particles
+const PARTICLE_COUNT = 10;  // Reduced slightly for better performance
 const PARTICLE_LIFETIME = 1500;  // Longer lifetime
 let particleSystemActive = false;
 
-class Particle {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        const angleVariation = (Math.random() - 0.5) * 0.3;
-        this.speedX = 4 + Math.random() * 2;
-        this.speedY = -4 - Math.random() * 2;
-        this.gravity = 0.12;
-        this.life = 1.0;
-        this.decay = 0.006 + Math.random() * 0.003; // Even slower decay
-        this.size = 3 + Math.random() * 4; // Slightly larger particles
-        this.opacity = 0.8 + Math.random() * 0.2; // Higher base opacity
+// Add these near the top with other globals
+let pixiApp = null;
+let emitter = null;
+
+// Add this to your globals
+let backgroundSprite = null;
+
+// Add these to your globals
+let backgroundContainer = null;
+let particleContainer = null;
+let piggyContainer = null;
+let piggySprite = null;
+
+// Add these to your global variables
+let zoomAnimationIntensity = 0;
+let animationStartTime = 0;
+
+// Initialize PixiJS
+function initializePixiParticles() {
+    return new Promise((resolve, reject) => {
+        try {
+            if (typeof PIXI === 'undefined') {
+                throw new Error('PIXI.js is not loaded');
+            }
+
+            const container = document.querySelector('.preview-container');
+            if (!container) {
+                throw new Error('Preview container not found');
+            }
+
+            // Create PIXI Application
+            pixiApp = new PIXI.Application({
+                width: CONFIG.CANVAS.WIDTH,
+                height: CONFIG.CANVAS.HEIGHT,
+                transparent: true,
+                antialias: true,
+                backgroundAlpha: 0
+            });
+
+            // Style and add the view
+            pixiApp.view.style.position = 'absolute';
+            pixiApp.view.style.top = '0';
+            pixiApp.view.style.left = '0';
+            pixiApp.view.style.width = '100%';
+            pixiApp.view.style.height = '100%';
+            pixiApp.view.style.pointerEvents = 'none';
+            container.appendChild(pixiApp.view);
+
+            // Create containers with proper layering
+            const backgroundContainer = new PIXI.Container();
+            const particleContainer = new PIXI.Container();
+            const piggyContainer = new PIXI.Container();
+
+            // Add containers in order (back to front)
+            pixiApp.stage.addChild(backgroundContainer);
+            pixiApp.stage.addChild(particleContainer);
+            pixiApp.stage.addChild(piggyContainer);
+
+            // Create particle emitter
+            const particleTexture = createWaterDropTexture();
+            emitter = new ParticleEmitter(particleContainer, particleTexture);
+
+            // Set up render loop
+            pixiApp.ticker.add(() => {
+                if (emitter) {
+                    emitter.update();
+                }
+                // Update other animations here
+            });
+
+            resolve({
+                backgroundContainer,
+                particleContainer,
+                piggyContainer
+            });
+        } catch (error) {
+            console.error('PIXI initialization error:', error);
+            reject(error);
+        }
+    });
+}
+
+// Particle Emitter class
+class ParticleEmitter {
+    constructor(container, texture) {
+        this.container = container;
+        this.texture = texture;
+        this.particles = [];
+        this.active = false;
+        this.maxParticles = 100;  // Reduced for better performance
+        this.particlesPerFrame = 2;
+        this.particlePool = [];  // Add particle pooling
+    }
+
+    createParticle() {
+        // Reuse particle from pool if available
+        let particle = this.particlePool.pop() || new PIXI.Sprite(this.texture);
+        
+        // Reset particle properties
+        particle.anchor.set(0.5);
+        particle.x = CONFIG.CANVAS.WIDTH * 0.32;
+        particle.y = CONFIG.CANVAS.HEIGHT * 0.87;
+        
+        const angle = -Math.PI/3 + (Math.random() * 0.2);
+        const speed = 7 + Math.random() * 2;
+        
+        particle.velocity = {
+            x: Math.cos(angle) * speed,
+            y: Math.sin(angle) * speed
+        };
+        
+        particle.gravity = 0.3;
+        particle.alpha = 0.8;
+        particle.scale.set(0.25 + Math.random() * 0.1);
+        
+        this.container.addChild(particle);
+        this.particles.push(particle);
     }
 
     update() {
-        this.x += this.speedX;
-        this.speedY += this.gravity;
-        this.y += this.speedY;
-        this.life -= this.decay;
-        
-        return this.life > 0;
+        if (!this.active) return;
+
+        // Emit new particles
+        if (this.particles.length < this.maxParticles) {
+            for (let i = 0; i < this.particlesPerFrame; i++) {
+                this.createParticle();
+            }
+        }
+
+        // Update existing particles
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const particle = this.particles[i];
+            particle.velocity.y += particle.gravity;
+            particle.x += particle.velocity.x;
+            particle.y += particle.velocity.y;
+            particle.alpha *= 0.97;
+
+            if (particle.alpha < 0.01 || 
+                particle.y > CONFIG.CANVAS.HEIGHT) {
+                this.container.removeChild(particle);
+                this.particles.splice(i, 1);
+                this.particlePool.push(particle);  // Return to pool
+            }
+        }
     }
 
-    draw(ctx) {
-        // Brighter blue color and higher opacity
-        ctx.fillStyle = `rgba(134, 209, 232, ${this.life * this.opacity})`;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
+    start() {
+        this.active = true;
+        // Create initial stream
+        for (let i = 0; i < 30; i++) {
+            this.createParticle();
+        }
+    }
+
+    stop() {
+        this.active = false;
+        this.particles.forEach(p => this.container.removeChild(p));
+        this.particles = [];
     }
 }
 
@@ -111,6 +240,13 @@ function updateDurationDisplay() {
     const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
     const totalDuration = (FRAME_DURATION * totalFrames) / 1000;
     document.getElementById('duration-display').textContent = `${totalDuration.toFixed(2)}s`;
+
+    // If we have a video background, adjust its duration but keep original speed
+    if (backgroundSprite?.texture.baseTexture.resource?.source instanceof HTMLVideoElement) {
+        const video = backgroundSprite.texture.baseTexture.resource.source;
+        // Don't change playbackRate, just let it loop the specified number of times
+        video.loop = true;
+    }
 }
 
 function updateVideoControls() {
@@ -141,7 +277,6 @@ function updateVideoControls() {
 
 function setSpeed(speed) {
     FRAME_DURATION = SPEEDS[speed];
-    const SEQUENCE_DURATION = FRAMES_IN_SEQUENCE * FRAME_DURATION;
     speedInfo.textContent = `${speed}`;
     
     currentMaxLoops = MAX_LOOPS[speed];
@@ -151,52 +286,56 @@ function setSpeed(speed) {
         loopInput.value = currentMaxLoops;
     }
     
+    // Update sprite animation speed
+    if (piggySprite) {
+        piggySprite.animationSpeed = 1000 / (FRAME_DURATION * 60);
+    }
+    
     updateDurationDisplay();
     startTime = 0;
+    animationStartTime = 0; // Reset animation timing when changing speed
 }
 
-function handleBackgroundUpload(e) {
-    const file = e.target.files[0];
+async function handleBackgroundUpload(event) {
+    const file = event.target.files[0];
     if (!file) return;
     
-    // Clean up existing background
-    if (backgroundElement) {
-        if (backgroundElement instanceof HTMLVideoElement) {
-            backgroundElement.pause();
-            backgroundElement.src = '';
-            backgroundElement.load();
-        }
-        URL.revokeObjectURL(backgroundElement.src);
-    }
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'loading';
+    loadingDiv.innerHTML = '<h3>Loading background...</h3>';
+    document.body.appendChild(loadingDiv);
     
-    const isVideo = file.type.startsWith('video/');
-    
-        if (isVideo) {
-            backgroundElement = document.createElement('video');
-            backgroundElement.crossOrigin = "anonymous";
-            backgroundElement.loop = true;
-            backgroundElement.muted = true;
-            backgroundElement.autoplay = true;
-            backgroundElement.playsinline = true;
-            backgroundElement.src = URL.createObjectURL(file);
-            
-        document.querySelector('.video-controls').style.display = 'block';
-            
-            backgroundElement.onloadedmetadata = () => {
-                updateVideoControls();
-            startAnimation(); // Restart animation when video is ready
-            };
+    try {
+        const url = URL.createObjectURL(file);
         
-        backgroundElement.play().catch(e => console.error('Video play failed:', e));
-        } else {
-            backgroundElement = new Image();
-            backgroundElement.crossOrigin = "anonymous";
-        backgroundElement.onload = () => {
-            document.querySelector('.video-controls').style.display = 'none';
-            startAnimation(); // Restart animation when image is loaded
-        };
-        backgroundElement.src = URL.createObjectURL(file);
+        if (file.type.startsWith('video/')) {
+            await loadVideoBackground(url);
+        } else if (file.type.startsWith('image/')) {
+            await loadImageBackground(url);
+        }
+    } catch (error) {
+        console.error('Background upload failed:', error);
+        alert('Failed to load background. Please try a different file.');
+    } finally {
+        loadingDiv.remove();
     }
+}
+
+function setupBackgroundSprite(sprite) {
+    // Set anchor to center
+    sprite.anchor.set(0.5);
+    
+    // Position at center
+    sprite.x = CONFIG.CANVAS.WIDTH / 2;
+    sprite.y = CONFIG.CANVAS.HEIGHT / 2;
+    
+    // Calculate initial scale to fill
+    const scaleX = CONFIG.CANVAS.WIDTH / sprite.texture.width;
+    const scaleY = CONFIG.CANVAS.HEIGHT / sprite.texture.height;
+    const scale = Math.max(scaleX, scaleY);
+    
+    // Apply scale
+    sprite.scale.set(scale);
 }
 
 // Initialize the GIF
@@ -227,12 +366,65 @@ function initializeGif(gifUrl) {
 
 async function initialize() {
     try {
-        piggyGif = await initializeGif(DEFAULT_GIF_URL);
-        startAnimation();
+        // Wait for DOM content to be fully loaded
+        await new Promise(resolve => {
+            if (document.readyState === 'complete') {
+                resolve();
+            } else {
+                window.addEventListener('load', resolve);
+            }
+        });
+
+        // Initialize GIF first
+        try {
+            piggyGif = await initializeGif(DEFAULT_GIF_URL);
+        } catch (gifError) {
+            console.error('Failed to load GIF:', gifError);
+            throw new Error('Failed to load Piggy animation');
+        }
+
+        // Initialize PIXI and get containers
+        const containers = await initializePixiParticles();
+        backgroundContainer = containers.backgroundContainer;
+        particleContainer = containers.particleContainer;
+        piggyContainer = containers.piggyContainer;
+        
+        // Load Piggy frames and create sprite
+        const piggyFrames = await loadPiggySprites();
+        piggySprite = await createPiggySprite(piggyFrames, piggyContainer);
+        
+        // Set up animation
+        pixiApp.ticker.add(() => {
+            const now = performance.now();
+            if (!startTime) startTime = now;
+
+            const elapsed = now - startTime;
+            const loopCount = parseInt(document.getElementById('loop-count').value);
+            const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
+            
+            if (elapsed >= totalDuration) {
+                startTime = now;
+                if (piggySprite) {
+                    piggySprite.gotoAndPlay(0);
+                }
+                
+                // Reset video to start when animation loops
+                if (backgroundSprite?.texture.baseTexture.resource?.source instanceof HTMLVideoElement) {
+                    const video = backgroundSprite.texture.baseTexture.resource.source;
+                    video.currentTime = videoStartTime;
+                }
+            }
+
+            // Update background if it's a video
+            if (backgroundSprite?.texture.baseTexture.resource?.source instanceof HTMLVideoElement) {
+                backgroundSprite.texture.update();
+            }
+        });
+
         setupEventListeners();
     } catch (error) {
         console.error('Failed to initialize:', error);
-        alert('Failed to load GIF. Please try again.');
+        alert('Failed to initialize. Please refresh the page.');
     }
 }
 
@@ -261,6 +453,45 @@ function setupEventListeners() {
     
     // Add background upload listener
     document.getElementById('background-upload').addEventListener('change', handleBackgroundUpload);
+
+    // Remove the onclick from HTML and add listeners here
+    const mirrorXBtn = document.querySelector('.mirror-x-btn');
+    const mirrorYBtn = document.querySelector('.mirror-y-btn');
+    
+    if (mirrorXBtn) {
+        console.log('Found mirror X button');
+        mirrorXBtn.addEventListener('click', () => {
+            console.log('Mirror X button clicked');
+            toggleMirrorX();
+        });
+    } else {
+        console.error('Mirror X button not found');
+    }
+    
+    if (mirrorYBtn) {
+        console.log('Found mirror Y button');
+        mirrorYBtn.addEventListener('click', () => {
+            console.log('Mirror Y button clicked');
+            toggleMirrorY();
+        });
+    } else {
+        console.error('Mirror Y button not found');
+    }
+
+    document.getElementById('zoom-animation').addEventListener('input', function(e) {
+        zoomAnimationIntensity = parseInt(e.target.value) / 100;
+        document.getElementById('zoom-animation-value').textContent = 
+            `Zoom Animation: ${e.target.value}%`;
+        // Update slider progress
+        const progress = (e.target.value - e.target.min) / (e.target.max - e.target.min) * 100;
+        e.target.style.setProperty('--slider-progress', `${progress}%`);
+        
+        // Start animation immediately when intensity changes
+        if (zoomAnimationIntensity > 0) {
+            animationStartTime = performance.now() / 1000;
+            requestAnimationFrame(() => updateTransform());
+        }
+    });
 }
 
 async function toggleSquirt() {
@@ -272,17 +503,20 @@ async function toggleSquirt() {
         const squirtStatus = document.querySelector('.squirt-status');
         squirtStatus.textContent = isSquirtMode ? '🌊 Remove SQUIRT' : '🌊 Add SQUIRT';
         
-        // Toggle particle system
-        particleSystemActive = isSquirtMode;
-        if (!isSquirtMode) {
-            particles = [];  // Clear particles when disabled
+        // Toggle particle emitter
+        if (emitter) {
+            if (isSquirtMode) {
+                emitter.start();
+            } else {
+                emitter.stop();
+            }
         }
         
         btn.classList.toggle('active', isSquirtMode);
+        animationStartTime = 0; // Reset animation timing when toggling squirt
     } catch (error) {
         console.error('Failed to toggle squirt mode:', error);
         isSquirtMode = !isSquirtMode;
-        particleSystemActive = false;
     } finally {
         btn.disabled = false;
     }
@@ -294,134 +528,6 @@ function updatePreview() {
     }
 }
 
-function animate() {
-    const now = performance.now();
-    if (!startTime) startTime = now;
-
-    const elapsed = now - startTime;
-    const loopCount = parseInt(document.getElementById('loop-count').value);
-    const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount);
-    
-    if (elapsed >= totalDuration) {
-        startTime = now;
-    }
-    
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw background first
-    if (backgroundElement) {
-        drawBackground();
-    }
-    
-    // Draw particles BEFORE piggy
-    if (isSquirtMode) {
-        updateParticles();
-    }
-    
-    // Draw piggy with adjusted size and position
-    if (piggyGif) {
-        const frame = Math.floor((elapsed / FRAME_DURATION) % FRAMES_IN_SEQUENCE);
-        try {
-            piggyGif.move_to(frame);
-            const piggyCanvas = piggyGif.get_canvas();
-            if (piggyCanvas) {
-                // Calculate new dimensions (95% of original)
-                const newWidth = canvas.width * 0.95;
-                const newHeight = canvas.height * 0.95;
-                // Adjust position (move slightly left and maintain bottom alignment)
-                const xOffset = -canvas.width * 0.03; // Move 3% left
-                const yOffset = canvas.height * 0.05; // Keep bottom aligned
-                ctx.drawImage(piggyCanvas, xOffset, yOffset, newWidth, newHeight);
-            }
-        } catch (e) {
-            console.error('Error drawing frame:', e);
-        }
-    }
-    
-    animationLoop = requestAnimationFrame(animate);
-}
-
-function drawBackground() {
-    if (!backgroundElement) return;
-
-    if (backgroundElement instanceof HTMLVideoElement) {
-        const loopCount = parseInt(document.getElementById('loop-count').value);
-        const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * loopCount) / 1000;
-        const elapsed = (performance.now() - startTime) / 1000;
-        
-        try {
-            if (backgroundElement.readyState >= 2) {
-                let targetTime = videoStartTime + (elapsed % totalDuration);
-                targetTime = targetTime % backgroundElement.duration;
-                
-                if (Math.abs(backgroundElement.currentTime - targetTime) > 0.1) {
-                    backgroundElement.currentTime = targetTime;
-                }
-            }
-        } catch (e) {
-            console.warn('Video timing update failed:', e);
-        }
-    }
-
-    const xOffset = parseInt(cropX.value);
-    const yOffset = parseInt(cropY.value);
-    const zoom = parseFloat(zoomControl.value) / 100; // Convert percentage to decimal
-
-    ctx.save();
-    
-    // Apply transforms from the center
-    ctx.translate(canvas.width/2, canvas.height/2);
-    ctx.scale(mirrorX ? -1 : 1, mirrorY ? -1 : 1);
-    ctx.translate(-canvas.width/2, -canvas.height/2);
-    
-    // Get media dimensions
-    const mediaWidth = backgroundElement instanceof HTMLVideoElement ? 
-        backgroundElement.videoWidth : backgroundElement.naturalWidth;
-    const mediaHeight = backgroundElement instanceof HTMLVideoElement ? 
-        backgroundElement.videoHeight : backgroundElement.naturalHeight;
-    
-    if (!mediaWidth || !mediaHeight) return;
-
-    // Calculate base scale to fit canvas
-    const baseScale = Math.min(
-        canvas.width / mediaWidth,
-        canvas.height / mediaHeight
-    );
-
-    // Apply zoom to the base scale
-    const finalScale = baseScale * zoom;
-
-    // Calculate dimensions after scaling
-    const width = mediaWidth * finalScale;
-    const height = mediaHeight * finalScale;
-
-    // Calculate position to center the image/video
-    const x = (canvas.width - width) / 2 + (xOffset / 50 * canvas.width);
-    const y = (canvas.height - height) / 2 + (yOffset / 50 * canvas.height);
-
-    // Draw the background
-    ctx.drawImage(backgroundElement, x, y, width, height);
-    ctx.restore();
-}
-
-function startAnimation() {
-    if (animationLoop) cancelAnimationFrame(animationLoop);
-    startTime = 0;
-    animate();
-}
-
-function toggleMirrorX() {
-    mirrorX = !mirrorX;
-    document.querySelector('.mirror-x-status').textContent = 
-        mirrorX ? '↔️ Unflip X' : '↔️ Flip X';
-}
-
-function toggleMirrorY() {
-    mirrorY = !mirrorY;
-    document.querySelector('.mirror-y-status').textContent = 
-        mirrorY ? '↕️ Unflip Y' : '↕️ Flip Y';
-}
-
 function updateTransformDisplay() {
     document.getElementById('zoom-value').textContent = `Zoom: ${zoomControl.value}%`;
     document.getElementById('crop-x-value').textContent = `Move X: ${cropX.value}`;
@@ -429,11 +535,59 @@ function updateTransformDisplay() {
 }
 
 function updateTransform() {
-    currentZoom = parseFloat(zoomControl.value) / 100; // Convert percentage to decimal
-    updateTransformDisplay();
-    if (!animationLoop && piggyGif) {
-        startAnimation();
+    const baseZoom = parseFloat(zoomControl.value) / 100;
+    const xOffset = parseInt(cropX.value);
+    const yOffset = parseInt(cropY.value);
+    
+    if (backgroundSprite) {
+        // Calculate zoom animation if intensity > 0
+        let currentZoom = baseZoom;
+        if (zoomAnimationIntensity > 0) {
+            // Use a fixed animation duration instead of loop count for speed
+            const animationDuration = 1.0; // 1 second per cycle
+            
+            if (!animationStartTime) {
+                animationStartTime = performance.now() / 1000;
+            }
+            
+            const currentTime = (performance.now() / 1000) - animationStartTime;
+            const progress = (currentTime % animationDuration) / animationDuration;
+            
+            // Create bounce effect using sine wave with fixed frequency
+            const bounce = Math.sin(progress * Math.PI * 2);
+            
+            // Apply bounce to zoom
+            const zoomVariation = 0.15 * zoomAnimationIntensity; // Max 15% variation
+            currentZoom = baseZoom * (1 + bounce * zoomVariation);
+        }
+
+        // Always set anchor to center
+        backgroundSprite.anchor.set(0.5);
+        
+        // Position at center of preview
+        backgroundSprite.x = CONFIG.CANVAS.WIDTH / 2;
+        backgroundSprite.y = CONFIG.CANVAS.HEIGHT / 2;
+        
+        // Calculate and apply scale
+        const scaleX = (CONFIG.CANVAS.WIDTH / backgroundSprite.texture.width) * currentZoom;
+        const scaleY = (CONFIG.CANVAS.HEIGHT / backgroundSprite.texture.height) * currentZoom;
+        const scale = Math.max(scaleX, scaleY);
+        
+        // Apply scale and flips
+        backgroundSprite.scale.x = scale * (mirrorX ? -1 : 1);
+        backgroundSprite.scale.y = scale * (mirrorY ? -1 : 1);
+        
+        // Apply offset
+        backgroundSprite.x += (xOffset / 50) * CONFIG.CANVAS.WIDTH;
+        backgroundSprite.y += (yOffset / 50) * CONFIG.CANVAS.HEIGHT;
+        
+        // Continue animation if active
+        if (zoomAnimationIntensity > 0) {
+            requestAnimationFrame(() => updateTransform());
+        }
     }
+    
+    updateTransformDisplay();
 }
 
 async function exportForSticker() {
@@ -443,6 +597,11 @@ async function exportForSticker() {
     
     if (backgroundElement instanceof HTMLVideoElement) {
         backgroundElement.currentTime = videoStartTime;
+    }
+    
+    // Reset particles if active
+    if (emitter && isSquirtMode) {
+        emitter.resetForExport();
     }
     
     const exportDiv = document.createElement('div');
@@ -563,27 +722,30 @@ function getBitrateForExport() {
 }
 
 async function exportAsVideo() {
-    const canvas = document.getElementById('preview-canvas');
-    if (!canvas) {
-        alert('Canvas not found');
-        return;
-    }
-
-    const loopCount = parseInt(document.getElementById('loop-count').value);
-    const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
-    const duration = (FRAME_DURATION * totalFrames) / 1000;
-    const optimalBitrate = calculateOptimalBitrate(duration);
-    
-    let loadingDiv = null;
-    
     try {
-        const mediaStream = canvas.captureStream(30);
-        
-        loadingDiv = document.createElement('div');
+        const loadingDiv = document.createElement('div');
         loadingDiv.className = 'loading';
-        loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Recording animation...</p>';
+        loadingDiv.innerHTML = '<h3>Preparing Export...</h3>';
         document.body.appendChild(loadingDiv);
 
+        // Check if MediaRecorder is supported
+        if (!window.MediaRecorder) {
+            throw new Error('MediaRecorder is not supported in this browser');
+        }
+
+        // Validate canvas
+        const canvas = document.getElementById('preview-canvas');
+        if (!canvas) {
+            throw new Error('Canvas element not found');
+        }
+
+        const loopCount = parseInt(document.getElementById('loop-count').value);
+        const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
+        const duration = (FRAME_DURATION * totalFrames) / 1000;
+        const optimalBitrate = calculateOptimalBitrate(duration);
+        
+        const mediaStream = canvas.captureStream(30);
+        
         const options = {
             mimeType: getSupportedMimeType(),
             videoBitsPerSecond: getBitrateForExport()
@@ -652,8 +814,9 @@ async function exportAsVideo() {
 
     } catch (error) {
         console.error('Export failed:', error);
-        if (loadingDiv) loadingDiv.remove();
-        alert(`Failed to export: ${error.message}\n\nSupported formats: ${MediaRecorder.isTypeSupported('video/mp4') ? 'MP4' : 'No MP4'}, ${MediaRecorder.isTypeSupported('video/webm') ? 'WebM' : 'No WebM'}`);
+        alert(`Export failed: ${error.message}\nPlease try a different browser or check your settings.`);
+    } finally {
+        document.querySelector('.loading')?.remove();
     }
 }
 
@@ -688,45 +851,223 @@ function downloadSticker(url, platform, extension) {
     URL.revokeObjectURL(url);
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    const video = document.querySelector('.video-background video');
-    
-    video.addEventListener('loadeddata', function() {
-        console.log('Video loaded successfully');
-    });
-    
-    video.addEventListener('error', function(e) {
-        console.error('Error loading video:', e);
-    });
-    
-    // Check video status every second
-    setInterval(() => {
-        console.log('Video ready state:', video.readyState);
-        console.log('Video paused:', video.paused);
-        console.log('Video current time:', video.currentTime);
-    }, 1000);
-});
+function createWaterDropTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;  // Smaller size for sharper droplets
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
 
-function updateParticles() {
-    if (!particleSystemActive) return;
+    // Create main droplet gradient
+    const mainGradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    mainGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');  // Bright center
+    mainGradient.addColorStop(0.3, 'rgba(134, 209, 232, 0.95)'); // More opaque water blue
+    mainGradient.addColorStop(0.7, 'rgba(134, 209, 232, 0.2)');
+    mainGradient.addColorStop(1, 'rgba(134, 209, 232, 0)');     // Fade out
 
-    if (particles.length < PARTICLE_COUNT && Math.random() < 0.4) {
-        particles.push(new Particle(
-            canvas.width * 0.32,  // Adjusted to match new piggy position
-            canvas.height * 0.85
-        ));
-    }
+    // Draw main droplet
+    ctx.beginPath();
+    ctx.fillStyle = mainGradient;
+    ctx.arc(16, 16, 16, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Update and remove dead particles
-    particles = particles.filter(particle => particle.update());
+    // Add highlight
+    const highlightGradient = ctx.createRadialGradient(12, 12, 0, 12, 12, 8);
+    highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+    highlightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
-    // Enhanced particle effects
-    ctx.save();
-    ctx.shadowBlur = 3; // Increased blur
-    ctx.shadowColor = 'rgba(134, 209, 232, 0.5)'; // Brighter shadow
-    particles.forEach(particle => particle.draw(ctx));
-    ctx.restore();
+    ctx.beginPath();
+    ctx.fillStyle = highlightGradient;
+    ctx.arc(12, 12, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    return PIXI.Texture.from(canvas);
 }
 
-// Initialize the application
-initialize();
+async function loadPiggySprites() {
+    const frames = [];
+    console.log("Starting to load frames...");
+    
+    // Pre-load all frames first
+    for (let i = 0; i < FRAMES_IN_SEQUENCE; i++) {
+        piggyGif.move_to(i);
+        const canvas = piggyGif.get_canvas();
+        const texture = PIXI.Texture.from(canvas.toDataURL());
+        frames.push(texture);
+        console.log(`Loaded frame ${i}`);
+    }
+    
+    return frames;
+}
+
+async function createPiggySprite(frames, container) {
+    console.log("Creating sprite with frames:", frames.length);
+    const piggySprite = new PIXI.AnimatedSprite(frames);
+    
+    // Position and size
+    piggySprite.width = CONFIG.CANVAS.WIDTH * 0.95;
+    piggySprite.height = CONFIG.CANVAS.HEIGHT * 0.95;
+    piggySprite.x = -CONFIG.CANVAS.WIDTH * 0.03;
+    piggySprite.y = CONFIG.CANVAS.HEIGHT * 0.05;
+    
+    // Animation settings
+    piggySprite.animationSpeed = 1000 / (FRAME_DURATION * 60);
+    piggySprite.loop = true;
+    
+    container.addChild(piggySprite);
+    piggySprite.play();
+    console.log("Sprite created and playing");
+    
+    return piggySprite;
+}
+
+// Add these helper functions
+async function loadVideoBackground(url) {
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.src = url;
+        video.loop = true;
+        video.muted = true;
+        
+        video.onloadedmetadata = () => {
+            try {
+                if (backgroundSprite) {
+                    backgroundContainer.removeChild(backgroundSprite);
+                }
+                backgroundSprite = PIXI.Sprite.from(video);
+                setupBackgroundSprite(backgroundSprite);
+                backgroundContainer.addChild(backgroundSprite);
+                video.play();
+                resolve();
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        video.onerror = () => reject(new Error('Failed to load video'));
+    });
+}
+
+async function loadImageBackground(url) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            try {
+                if (backgroundSprite) {
+                    backgroundContainer.removeChild(backgroundSprite);
+                }
+                backgroundSprite = PIXI.Sprite.from(img);
+                setupBackgroundSprite(backgroundSprite);
+                backgroundContainer.addChild(backgroundSprite);
+                resolve();
+            } catch (error) {
+                reject(error);
+            }
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = url;
+    });
+}
+
+// Add this cleanup function
+function cleanup() {
+    // Clear particle system
+    if (emitter) {
+        emitter.stop();
+        emitter.particles.forEach(p => {
+            emitter.container.removeChild(p);
+            p.destroy();
+        });
+        emitter.particles = [];
+        emitter.particlePool.forEach(p => p.destroy());
+        emitter.particlePool = [];
+    }
+
+    // Clear background
+    if (backgroundSprite) {
+        const source = backgroundSprite.texture.baseTexture.resource?.source;
+        if (source instanceof HTMLVideoElement) {
+            source.pause();
+            source.src = '';
+            source.load();
+        }
+        backgroundContainer.removeChild(backgroundSprite);
+        backgroundSprite.destroy();
+        backgroundSprite = null;
+    }
+
+    // Clear other textures and sprites
+    if (piggySprite) {
+        piggyContainer.removeChild(piggySprite);
+        piggySprite.destroy();
+        piggySprite = null;
+    }
+}
+
+// Add event listener for page unload
+window.addEventListener('beforeunload', cleanup);
+
+// Add this error recovery function
+function recoverFromError() {
+    console.log('Attempting to recover from error...');
+    
+    // Stop any ongoing animations
+    if (pixiApp?.ticker) {
+        pixiApp.ticker.stop();
+    }
+    
+    // Clean up existing resources
+    cleanup();
+    
+    // Attempt to reinitialize
+    initialize().catch(error => {
+        console.error('Failed to recover:', error);
+        // Show error UI to user
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.innerHTML = `
+            <h3>Something went wrong</h3>
+            <p>Please refresh the page to try again.</p>
+            <button onclick="window.location.reload()">Refresh</button>
+        `;
+        document.body.appendChild(errorDiv);
+    });
+}
+
+// Add error handler to PIXI ticker
+pixiApp?.ticker.add(() => {
+    try {
+        if (emitter) {
+            emitter.update();
+        }
+        // Update other animations...
+    } catch (error) {
+        console.error('Animation error:', error);
+        recoverFromError();
+    }
+});
+
+// Update how we call initialize
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => initialize());
+            } else {
+    initialize();
+}
+
+// Update the toggleMirrorX and toggleMirrorY functions
+function toggleMirrorX() {
+    console.log('toggleMirrorX called, current state:', mirrorX);
+    mirrorX = !mirrorX;
+    const btn = document.querySelector('.mirror-x-btn');
+    btn.classList.toggle('active', mirrorX);
+    console.log('New mirrorX state:', mirrorX);
+    updateTransform();
+}
+
+function toggleMirrorY() {
+    console.log('toggleMirrorY called, current state:', mirrorY);
+    mirrorY = !mirrorY;
+    const btn = document.querySelector('.mirror-y-btn');
+    btn.classList.toggle('active', mirrorY);
+    console.log('New mirrorY state:', mirrorY);
+    updateTransform();
+}
