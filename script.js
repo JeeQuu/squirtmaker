@@ -523,17 +523,13 @@ function setupEventListeners() {
         console.error('Mirror Y button not found');
     }
 
-    document.getElementById('zoom-animation').addEventListener('input', function(e) {
-        zoomAnimationIntensity = parseInt(e.target.value) / 100;
+    document.getElementById('zoom-animation').addEventListener('input', (e) => {
+        zoomAnimationIntensity = parseInt(e.target.value);
         document.getElementById('zoom-animation-value').textContent = 
-            `Zoom Animation: ${e.target.value}%`;
-        // Update slider progress
-        const progress = (e.target.value - e.target.min) / (e.target.max - e.target.min) * 100;
-        e.target.style.setProperty('--slider-progress', `${progress}%`);
+            `Zoom Animation: ${zoomAnimationIntensity}%`;
         
-        // Start animation immediately when intensity changes
+        // Start animation loop if intensity > 0
         if (zoomAnimationIntensity > 0) {
-            animationStartTime = performance.now() / 1000;
             requestAnimationFrame(() => updateTransform());
         }
     });
@@ -585,51 +581,43 @@ function updateTransform() {
     const yOffset = parseInt(cropY.value);
     
     if (backgroundSprite) {
-        // Calculate zoom animation if intensity > 0
         let currentZoom = baseZoom;
+        
+        // Calculate zoom animation if intensity > 0
         if (zoomAnimationIntensity > 0) {
-            // Use a fixed animation duration instead of loop count for speed
-            const animationDuration = 1.0; // 1 second per cycle
+            const loopCount = parseInt(document.getElementById('loop-count').value);
+            const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
+            const totalDuration = FRAME_DURATION * totalFrames;
             
-            if (!animationStartTime) {
-                animationStartTime = performance.now() / 1000;
-            }
+            const now = performance.now();
+            if (!startTime) startTime = now;
             
-            const currentTime = (performance.now() / 1000) - animationStartTime;
-            const progress = (currentTime % animationDuration) / animationDuration;
+            const elapsed = (now - startTime) % totalDuration;
+            const progress = elapsed / totalDuration;
             
-            // Create bounce effect using sine wave with fixed frequency
             const bounce = Math.sin(progress * Math.PI * 2);
-            
-            // Apply bounce to zoom
-            const zoomVariation = 0.15 * zoomAnimationIntensity; // Max 15% variation
+            const zoomVariation = 0.15 * (zoomAnimationIntensity / 100);
             currentZoom = baseZoom * (1 + bounce * zoomVariation);
+            
+            requestAnimationFrame(() => updateTransform());
         }
 
-        // Always set anchor to center
-        backgroundSprite.anchor.set(0.5);
-        
-        // Position at center of preview
-        backgroundSprite.x = CONFIG.CANVAS.WIDTH / 2;
-        backgroundSprite.y = CONFIG.CANVAS.HEIGHT / 2;
-        
-        // Calculate and apply scale
+        // Calculate scale while maintaining aspect ratio
         const scaleX = (CONFIG.CANVAS.WIDTH / backgroundSprite.texture.width) * currentZoom;
         const scaleY = (CONFIG.CANVAS.HEIGHT / backgroundSprite.texture.height) * currentZoom;
         const scale = Math.max(scaleX, scaleY);
         
-        // Apply scale and flips
-        backgroundSprite.scale.x = scale * (mirrorX ? -1 : 1);
-        backgroundSprite.scale.y = scale * (mirrorY ? -1 : 1);
+        // Apply scale uniformly to maintain aspect ratio
+        backgroundSprite.scale.set(
+            scale * (mirrorX ? -1 : 1),
+            scale * (mirrorY ? -1 : 1)
+        );
         
-        // Apply offset
-        backgroundSprite.x += (xOffset / 50) * CONFIG.CANVAS.WIDTH;
-        backgroundSprite.y += (yOffset / 50) * CONFIG.CANVAS.HEIGHT;
-        
-        // Continue animation if active
-        if (zoomAnimationIntensity > 0) {
-            requestAnimationFrame(() => updateTransform());
-        }
+        // Center the sprite and apply offset
+        backgroundSprite.position.set(
+            CONFIG.CANVAS.WIDTH / 2 + (xOffset / 50) * CONFIG.CANVAS.WIDTH,
+            CONFIG.CANVAS.HEIGHT / 2 + (yOffset / 50) * CONFIG.CANVAS.HEIGHT
+        );
     }
     
     updateTransformDisplay();
