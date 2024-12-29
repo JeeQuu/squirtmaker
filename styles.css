@@ -303,6 +303,7 @@ input[type="file"]:hover {
     border-radius: 12px;
     padding: 16px;
     margin-bottom: 12px;
+    -webkit-appearance: none;
 }
 
 /* Group transform controls together */
@@ -337,6 +338,7 @@ input[type="file"]:hover {
     margin: 0;
     padding: 0;
     line-height: 1.2;
+    -webkit-text-size-adjust: 100%;
 }
 
 /* Consistent styling for all range inputs */
@@ -347,7 +349,7 @@ input[type="range"].styled-slider {
     height: 6px;
     background: #eee;
     border-radius: 3px;
-    margin: 0;
+    margin: 10px 0;
     padding: 0;
 }
 
@@ -473,6 +475,7 @@ input[type="range"].styled-slider::-webkit-slider-thumb {
     transition: all 0.2s ease;
     border: none;
     margin-top: -7px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
 /* Consistent track styling */
@@ -568,5 +571,66 @@ input[type="range"].styled-slider::-webkit-slider-runnable-track {
     font-size: 15px;
     font-weight: 600;
     margin-top: 4px;
+    border-radius: 8px;
+    -webkit-appearance: none;
+    border: none;
+}
+
+/* Add touch feedback for iOS */
+@media (hover: none) {
+    input[type="range"].styled-slider:active::-webkit-slider-thumb {
+        transform: scale(1.1);
+    }
+    
+    .export-btn:active {
+        opacity: 0.9;
+    }
+}
+
+/* Add iOS-specific padding adjustments */
+@supports (-webkit-touch-callout: none) {
+    .sliders-group {
+        padding: 16px;
+        margin-bottom: env(safe-area-inset-bottom, 12px);
+    }
+    
+    .loop-controls {
+        margin-bottom: env(safe-area-inset-bottom, 8px);
+    }
+    
+    input[type="range"].styled-slider {
+        margin: 10px auto;
+        max-width: 100%;
+    }
+    
+    .export-btn {
+        margin-bottom: env(safe-area-inset-bottom, 20px);
+        padding: 12px 10px;
+    }
+}
+
+/* Ensure consistent button sizing on iOS */
+.export-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--piggy-pink);
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 4px;
+    border-radius: 8px;
+    -webkit-appearance: none;
+    border: none;
+}
+
+/* Add touch feedback for iOS */
+@media (hover: none) {
+    input[type="range"].styled-slider:active::-webkit-slider-thumb {
+        transform: scale(1.1);
+    }
+    
+    .export-btn:active {
+        opacity: 0.9;
+    }
 }
  
