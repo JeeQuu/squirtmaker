@@ -329,20 +329,35 @@ async function handleBackgroundUpload(event) {
 }
 
 function setupBackgroundSprite(sprite) {
-    // Set anchor to center
     sprite.anchor.set(0.5);
-    
-    // Position at center
     sprite.x = CONFIG.CANVAS.WIDTH / 2;
     sprite.y = CONFIG.CANVAS.HEIGHT / 2;
     
-    // Calculate initial scale to fill
     const scaleX = CONFIG.CANVAS.WIDTH / sprite.texture.width;
     const scaleY = CONFIG.CANVAS.HEIGHT / sprite.texture.height;
     const scale = Math.max(scaleX, scaleY);
     
-    // Apply scale
     sprite.scale.set(scale);
+    
+    // If it's a video sprite, ensure it updates
+    if (sprite.texture.baseTexture.resource?.source instanceof HTMLVideoElement) {
+        const video = sprite.texture.baseTexture.resource.source;
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute('webkit-playsinline', '');
+        video.setAttribute('playsinline', '');
+        
+        // Try to play immediately and on user interaction
+        video.play().catch(() => {
+            const playHandler = () => {
+                video.play().catch(console.error);
+                document.removeEventListener('touchstart', playHandler);
+                document.removeEventListener('click', playHandler);
+            };
+            document.addEventListener('touchstart', playHandler, { once: true });
+            document.addEventListener('click', playHandler, { once: true });
+        });
+    }
 }
 
 // Initialize the GIF
@@ -949,16 +964,45 @@ async function loadVideoBackground(url) {
         video.src = url;
         video.loop = true;
         video.muted = true;
+        video.playsInline = true;
+        video.setAttribute('webkit-playsinline', '');
+        video.setAttribute('playsinline', '');
         
-        video.onloadedmetadata = () => {
+        video.onloadedmetadata = async () => {
             try {
+                // Force play the video
+                await video.play().catch(error => {
+                    console.log("Initial play failed, trying after user interaction");
+                    // Add touch/click handler for iOS
+                    const playHandler = () => {
+                        video.play().catch(console.error);
+                        document.removeEventListener('touchstart', playHandler);
+                        document.removeEventListener('click', playHandler);
+                    };
+                    document.addEventListener('touchstart', playHandler, { once: true });
+                    document.addEventListener('click', playHandler, { once: true });
+                });
+
                 if (backgroundSprite) {
                     backgroundContainer.removeChild(backgroundSprite);
                 }
-                backgroundSprite = PIXI.Sprite.from(video);
+                
+                // Create PIXI video sprite
+                const texture = PIXI.Texture.from(video);
+                backgroundSprite = new PIXI.Sprite(texture);
                 setupBackgroundSprite(backgroundSprite);
                 backgroundContainer.addChild(backgroundSprite);
-                video.play();
+                
+                // Ensure video keeps playing
+                pixiApp.ticker.add(() => {
+                    if (video.paused) {
+                        video.play().catch(console.error);
+                    }
+                    if (texture) {
+                        texture.update();
+                    }
+                });
+
                 resolve();
             } catch (error) {
                 reject(error);
