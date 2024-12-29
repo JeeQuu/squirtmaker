@@ -171,7 +171,7 @@ class ParticleEmitter {
         
         particle.anchor.set(0.5);
         particle.x = CONFIG.CANVAS.WIDTH * 0.32;
-        particle.y = CONFIG.CANVAS.HEIGHT * 0.87;
+        particle.y = CONFIG.CANVAS.HEIGHT * 0.92;
         
         // Tighter angle control for shower effect
         const angle = -Math.PI/3 + (Math.random() * 0.1);
@@ -647,17 +647,19 @@ async function exportForSticker() {
         
         // Check MediaRecorder support
         if (!window.MediaRecorder) {
-            throw new Error('MediaRecorder is not supported in this browser');
+            throw new Error('MediaRecorder is not supported. Please use Chrome or Firefox desktop.');
         }
+
+        // Ensure we can record WebM
+        const mimeType = getSupportedMimeType();
 
         const loopCount = parseInt(document.getElementById('loop-count').value);
         const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
         const duration = (FRAME_DURATION * totalFrames) / 1000;
         
-        // Set up MediaRecorder with optimal settings
-        const stream = canvas.captureStream(30); // 30fps capture
+        const stream = canvas.captureStream(30);
         const options = {
-            mimeType: getSupportedMimeType(),
+            mimeType: mimeType,
             videoBitsPerSecond: getBitrateForExport()
         };
 
@@ -899,20 +901,18 @@ async function exportAsVideo() {
 }
 
 function getSupportedMimeType() {
-    const possibleTypes = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm'
-    ];
-
-    for (const type of possibleTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
-            console.log('Using MIME type:', type);
-            return type;
-        }
+    // For Telegram stickers, we need WebM with VP9
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+        console.log('Using VP9 codec');
+        return 'video/webm;codecs=vp9';
+    } 
+    // Fallback to VP8 if VP9 is not available
+    else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        console.log('Falling back to VP8 codec');
+        return 'video/webm;codecs=vp8';
     }
-
-    throw new Error('No supported video format found');
+    // If neither is available, throw an error
+    throw new Error('This browser does not support WebM with VP8/VP9. Please use Chrome or Firefox desktop.');
 }
 
 function downloadSticker(url, platform, extension) {
