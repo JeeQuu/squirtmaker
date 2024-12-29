@@ -30,15 +30,11 @@ const CONFIG = {
         HEIGHT: 512
     },
     EXPORT: {
-        MAX_SIZE: 256 * 1024, // 256KB
+        MAX_SIZE: 256 * 1024, // 256KB (Telegram limit)
         QUALITY_SETTINGS: {
-            high: 2000000,
-            normal: 1000000
-        },
-        GIF: {
-            MAX_WIDTH: 512,
-            MAX_HEIGHT: 512,
-            QUALITY: 10
+            high: 2000000,    // 2Mbps
+            normal: 1000000,  // 1Mbps
+            low: 500000      // 500Kbps
         }
     },
     BITRATES: {
@@ -640,67 +636,121 @@ function updateTransform() {
 }
 
 async function exportForSticker() {
-    if (piggyGif) {
-        piggyGif.move_to(0);
-    }
-    
-    if (backgroundElement instanceof HTMLVideoElement) {
-        backgroundElement.currentTime = videoStartTime;
-    }
-    
-    // Reset particles if active
-    if (emitter && isSquirtMode) {
-        emitter.resetForExport();
-    }
-    
-    const exportDiv = document.createElement('div');
-    exportDiv.className = 'export-dialog';
-    exportDiv.innerHTML = `
-        <h3>Export Sticker</h3>
-        <div class="quality-settings">
-            <h4>Quality Settings</h4>
-            <select id="quality-preset" onchange="updateQualityControls()">
-                <option value="${CONFIG.BITRATES.AUTO}">Auto (Telegram Safe)</option>
-                <option value="${CONFIG.BITRATES.TELEGRAM}">Telegram Optimized</option>
-                <option value="${CONFIG.BITRATES.CUSTOM}">Custom</option>
-            </select>
-            <div id="custom-bitrate" style="display: none;">
-                <label>Custom Bitrate (bps):
-                    <input type="range" 
-                           id="custom-bitrate-value" 
-                           min="100000" 
-                           max="4000000" 
-                           step="100000" 
-                           value="1500000"
-                           class="styled-slider"
-                           onchange="updateQualityControls()">
-                    <span id="bitrate-value-display">1.5 Mbps</span>
-                </label>
+    try {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'loading';
+        loadingDiv.innerHTML = '<h3>Preparing Export...</h3>';
+        document.body.appendChild(loadingDiv);
+
+        // Get the PIXI canvas
+        const canvas = pixiApp.view;
+        
+        // Check MediaRecorder support
+        if (!window.MediaRecorder) {
+            throw new Error('MediaRecorder is not supported in this browser');
+        }
+
+        const loopCount = parseInt(document.getElementById('loop-count').value);
+        const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
+        const duration = (FRAME_DURATION * totalFrames) / 1000;
+        
+        // Set up MediaRecorder with optimal settings
+        const stream = canvas.captureStream(30); // 30fps capture
+        const options = {
+            mimeType: getSupportedMimeType(),
+            videoBitsPerSecond: getBitrateForExport()
+        };
+
+        const recorder = new MediaRecorder(stream, options);
+        const chunks = [];
+        
+        recorder.ondataavailable = e => chunks.push(e.data);
+
+        const recordingPromise = new Promise((resolve, reject) => {
+            let recordingStartTime = Date.now();
+            
+            recorder.onstop = () => {
+                loadingDiv.innerHTML = '<h3>Processing...</h3>';
+                const blob = new Blob(chunks, { type: options.mimeType });
+                resolve(blob);
+            };
+            
+            recorder.onerror = reject;
+
+            // Show progress
+            const updateProgress = () => {
+                if (recorder.state === 'recording') {
+                    const elapsed = (Date.now() - recordingStartTime) / 1000;
+                    const progress = Math.min(100, (elapsed / duration) * 100);
+                    loadingDiv.innerHTML = `<h3>Recording...</h3><p>${progress.toFixed(0)}%</p>`;
+                    if (elapsed < duration) {
+                        requestAnimationFrame(updateProgress);
+                    }
+                }
+            };
+            updateProgress();
+        });
+
+        // Reset animation state
+        startTime = 0;
+        if (piggySprite) {
+            piggySprite.gotoAndPlay(0);
+        }
+        
+        // Start recording
+        recorder.start();
+        
+        // Stop recording after animation completes
+        setTimeout(() => {
+            if (recorder.state === 'recording') {
+                recorder.stop();
+            }
+        }, duration * 1000 + 100); // Add small buffer
+
+        const blob = await recordingPromise;
+        loadingDiv.remove();
+
+        // Show export options
+        const url = URL.createObjectURL(blob);
+        const fileSize = blob.size / 1024;
+
+        const exportDiv = document.createElement('div');
+        exportDiv.className = 'export-dialog';
+        exportDiv.innerHTML = `
+            <h3>Export Sticker</h3>
+            ${fileSize > 256 ? 
+                `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's limit!</p>` 
+                : ''}
+            <div class="format-group">
+                <h4>WebM/VP9 (${fileSize.toFixed(1)}KB)</h4>
+                <button onclick="downloadSticker('${url}', 'telegram', 'webm')">
+                    Download for Telegram
+                </button>
             </div>
-            <div class="bitrate-info">
-                <span id="bitrate-display"></span>
-            </div>
-        </div>
-        <button onclick="exportAsVideo()">Export for Telegram</button>
-        <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
-    `;
-    document.body.appendChild(exportDiv);
-    
-    setTimeout(() => updateQualityControls(), 0);
+            <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
+        `;
+        document.body.appendChild(exportDiv);
+
+    } catch (error) {
+        console.error('Export failed:', error);
+        alert(`Export failed: ${error.message}\nPlease try a different browser or check your settings.`);
+        document.querySelector('.loading')?.remove();
+    }
 }
 
-// Add these functions back for export functionality
 function calculateOptimalBitrate(duration) {
-    const MAX_SIZE_BYTES = 256 * 1024;
+    const MAX_SIZE_BYTES = CONFIG.EXPORT.MAX_SIZE;
     const TARGET_SIZE_BITS = MAX_SIZE_BYTES * 8;
-    const COMPRESSION_COMPENSATION = 2.2;
+    const COMPRESSION_COMPENSATION = 2.2; // Compensation factor for WebM compression
     
+    // Calculate target bitrate to stay under size limit
     const targetBitrate = Math.floor((TARGET_SIZE_BITS / duration) * COMPRESSION_COMPENSATION);
     
     console.log('Duration:', duration, 
                 'Target size (KB):', MAX_SIZE_BYTES / 1024, 
                 'Compensated bitrate:', targetBitrate,
-                'Estimated final size (KB):', ((targetBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION).toFixed(1));
+                'Estimated final size (KB):', 
+                ((targetBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION).toFixed(1));
     
     return targetBitrate;
 }
@@ -738,36 +788,15 @@ function updateQualityControls() {
 }
 
 function getBitrateForExport() {
-    console.log('Getting bitrate for export...');
-    const preset = document.getElementById('quality-preset').value;
+    const loopCount = parseInt(document.getElementById('loop-count').value);
+    const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
+    const duration = (FRAME_DURATION * totalFrames) / 1000;
     
-    const duration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * 
-        parseInt(document.getElementById('loop-count').value)) / 1000;
+    // Calculate optimal bitrate based on Telegram's size limit
+    const optimalBitrate = calculateOptimalBitrate(duration);
     
-    let bitrate;
-    switch(preset) {
-        case CONFIG.BITRATES.AUTO:
-            bitrate = calculateOptimalBitrate(duration);
-            break;
-        case CONFIG.BITRATES.TELEGRAM:
-            const calculatedBitrate = calculateOptimalBitrate(duration);
-            const minBitrate = 2500000;
-            const maxBitrate = duration <= 1.5 ? 4000000 : 3000000;
-            bitrate = Math.max(minBitrate, Math.min(maxBitrate, calculatedBitrate));
-            break;
-        case CONFIG.BITRATES.CUSTOM:
-            bitrate = parseInt(document.getElementById('custom-bitrate-value').value);
-            break;
-        default:
-            bitrate = calculateOptimalBitrate(duration);
-    }
-    
-    const COMPRESSION_COMPENSATION = 2.2;
-    const estimatedSize = (bitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION;
-    console.log('Selected bitrate:', bitrate, 
-                'Duration:', duration,
-                'Estimated size (KB):', estimatedSize.toFixed(1));
-    return bitrate;
+    // Cap at 2Mbps for quality
+    return Math.min(optimalBitrate, CONFIG.EXPORT.QUALITY_SETTINGS.high);
 }
 
 async function exportAsVideo() {
@@ -873,9 +902,6 @@ function getSupportedMimeType() {
     const possibleTypes = [
         'video/webm;codecs=vp9',
         'video/webm;codecs=vp8',
-        'video/mp4;codecs=h264,aac',
-        'video/mp4',
-        'video/webm;codecs=h264',
         'video/webm'
     ];
 
