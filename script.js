@@ -163,31 +163,32 @@ class ParticleEmitter {
         this.texture = texture;
         this.particles = [];
         this.active = false;
-        this.maxParticles = 50; // Reduced for better iOS performance
-        this.particlesPerFrame = 1; // Reduced emission rate
+        this.maxParticles = 100;  // Back to higher count
+        this.particlesPerFrame = 4;  // Emit more particles per frame
         this.particlePool = [];
+        this.lastEmitTime = 0;
+        this.emitInterval = 16; // Sync with typical frame rate (60fps)
     }
 
     createParticle() {
         let particle = this.particlePool.pop() || new PIXI.Sprite(this.texture);
         
-        // Adjusted particle properties for consistency
         particle.anchor.set(0.5);
         particle.x = CONFIG.CANVAS.WIDTH * 0.32;
         particle.y = CONFIG.CANVAS.HEIGHT * 0.87;
         
-        // Adjusted angle and speed for more consistent behavior
-        const angle = -Math.PI/3 + (Math.random() * 0.15); // Reduced randomness
-        const speed = 5 + Math.random() * 1.5; // Reduced speed variation
+        // Tighter angle control for shower effect
+        const angle = -Math.PI/3 + (Math.random() * 0.1);
+        const speed = 7 + Math.random(); // More consistent speed
         
         particle.velocity = {
             x: Math.cos(angle) * speed,
             y: Math.sin(angle) * speed
         };
         
-        particle.gravity = 0.25; // Reduced gravity
-        particle.alpha = 0.7; // Slightly reduced initial alpha
-        particle.scale.set(0.2 + Math.random() * 0.08); // Smaller, more consistent size
+        particle.gravity = 0.3;
+        particle.alpha = 0.85;
+        particle.scale.set(0.35 + Math.random() * 0.1);
         
         this.container.addChild(particle);
         this.particles.push(particle);
@@ -196,25 +197,27 @@ class ParticleEmitter {
     update() {
         if (!this.active) return;
 
-        // Emit new particles with rate limiting for iOS
-        if (this.particles.length < this.maxParticles) {
-            // Add frame rate check for iOS
-            if (performance.now() % 2 === 0) { // Only emit every other frame
+        const now = performance.now();
+        
+        // Emit particles at consistent intervals
+        if (now - this.lastEmitTime >= this.emitInterval) {
+            if (this.particles.length < this.maxParticles) {
                 for (let i = 0; i < this.particlesPerFrame; i++) {
                     this.createParticle();
                 }
             }
+            this.lastEmitTime = now;
         }
 
-        // Update existing particles with smoother values
+        // Update existing particles
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const particle = this.particles[i];
             particle.velocity.y += particle.gravity;
             particle.x += particle.velocity.x;
             particle.y += particle.velocity.y;
-            particle.alpha *= 0.98; // Slower fade out
+            particle.alpha *= 0.97; // Faster fade out for better flow
 
-            if (particle.alpha < 0.02 || 
+            if (particle.alpha < 0.05 || 
                 particle.y > CONFIG.CANVAS.HEIGHT) {
                 this.container.removeChild(particle);
                 this.particles.splice(i, 1);
@@ -225,8 +228,9 @@ class ParticleEmitter {
 
     start() {
         this.active = true;
-        // Create initial stream
-        for (let i = 0; i < 30; i++) {
+        this.lastEmitTime = performance.now();
+        // Create initial burst
+        for (let i = 0; i < 45; i++) {
             this.createParticle();
         }
     }
@@ -883,19 +887,19 @@ function downloadSticker(url, platform, extension) {
 
 function createWaterDropTexture() {
     const canvas = document.createElement('canvas');
-    canvas.width = 16;  // Smaller texture size
-    canvas.height = 16;
+    canvas.width = 24;  // Increased texture size
+    canvas.height = 24;
     const ctx = canvas.getContext('2d');
 
-    // Simpler gradient for better performance
-    const gradient = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-    gradient.addColorStop(0.5, 'rgba(134, 209, 232, 0.6)');
+    // Enhanced gradient for better visibility
+    const gradient = ctx.createRadialGradient(12, 12, 0, 12, 12, 12);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.95)'); // Brighter center
+    gradient.addColorStop(0.4, 'rgba(134, 209, 232, 0.8)'); // More opaque middle
     gradient.addColorStop(1, 'rgba(134, 209, 232, 0)');
 
     ctx.beginPath();
     ctx.fillStyle = gradient;
-    ctx.arc(8, 8, 8, 0, Math.PI * 2);
+    ctx.arc(12, 12, 12, 0, Math.PI * 2);
     ctx.fill();
 
     return PIXI.Texture.from(canvas);
