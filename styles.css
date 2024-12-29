@@ -191,7 +191,7 @@ label {
     transform: translate(-50%, -50%);
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
-    padding: 15px;
+    padding: 20px;
     border-radius: 16px;
     box-shadow: 0 4px 32px var(--shadow);
     z-index: 1000;
@@ -205,6 +205,20 @@ label {
 
 .quality-settings {
     margin: 20px 0;
+}
+
+.quality-settings select {
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid var(--piggy-pink);
+    margin-bottom: 10px;
+}
+
+.bitrate-info {
+    margin-top: 10px;
+    font-size: 14px;
+    color: var(--text);
 }
 
 .size-warning {
