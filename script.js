@@ -665,10 +665,13 @@ function updateTransform() {
             
             const now = performance.now();
             if (!startTime) startTime = now;
+            if (!animationStartTime) animationStartTime = now;
             
-            const elapsed = (now - startTime) % totalDuration;
+            // Use animationStartTime for consistent animation phase
+            const elapsed = (now - animationStartTime) % totalDuration;
             const progress = elapsed / totalDuration;
             
+            // Ensure smooth sinusoidal animation
             const bounce = Math.sin(progress * Math.PI * 2);
             const zoomVariation = 0.15 * (zoomAnimationIntensity / 100);
             currentZoom = baseZoom * (1 + bounce * zoomVariation);
@@ -676,18 +679,16 @@ function updateTransform() {
             requestAnimationFrame(() => updateTransform());
         }
 
-        // Calculate scale while maintaining aspect ratio
+        // Rest of the transform code...
         const scaleX = (CONFIG.CANVAS.WIDTH / backgroundSprite.texture.width) * currentZoom;
         const scaleY = (CONFIG.CANVAS.HEIGHT / backgroundSprite.texture.height) * currentZoom;
         const scale = Math.max(scaleX, scaleY);
         
-        // Apply scale uniformly to maintain aspect ratio
         backgroundSprite.scale.set(
             scale * (mirrorX ? -1 : 1),
             scale * (mirrorY ? -1 : 1)
         );
         
-        // Center the sprite and apply offset
         backgroundSprite.position.set(
             CONFIG.CANVAS.WIDTH / 2 + (xOffset / 50) * CONFIG.CANVAS.WIDTH,
             CONFIG.CANVAS.HEIGHT / 2 + (yOffset / 50) * CONFIG.CANVAS.HEIGHT
@@ -699,7 +700,6 @@ function updateTransform() {
 
 async function exportForSticker() {
     try {
-        // Check if PIXI app is initialized
         if (!pixiApp || !pixiApp.view) {
             throw new Error('Animation system not properly initialized. Please refresh the page.');
         }
@@ -709,113 +709,95 @@ async function exportForSticker() {
         loadingDiv.innerHTML = '<h3>Preparing Export...</h3>';
         document.body.appendChild(loadingDiv);
 
-        // Use the preview canvas as fallback if PIXI view isn't available
         const canvas = pixiApp.view || document.getElementById('preview-canvas');
         if (!canvas) {
             throw new Error('No canvas found for recording');
         }
 
+        if (!MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+            throw new Error('Your browser does not support WebM VP9 format required for Telegram stickers. Please try using Chrome or Edge.');
+        }
+
         const loopCount = parseInt(document.getElementById('loop-count').value);
         const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
         const duration = (FRAME_DURATION * totalFrames) / 1000;
+
+        // Reset all animation states
+        startTime = performance.now();
+        animationStartTime = startTime; // Reset zoom animation time
         
-        // Check MediaRecorder support first
-        if (!window.MediaRecorder) {
-            throw new Error('Your browser does not support video recording');
-        }
+        // Force initial transform update
+        await new Promise(resolve => {
+            requestAnimationFrame(() => {
+                if (piggySprite) {
+                    piggySprite.gotoAndPlay(0);
+                }
+                updateTransform(); // Force transform update
+                resolve();
+            });
+        });
 
-        // Try to get supported MIME types
-        const formats = getSupportedMimeType();
-        console.log('Supported formats:', formats);
+        // Wait one more frame to ensure everything is stable
+        await new Promise(requestAnimationFrame);
 
-        // Configure MediaRecorder options for universal format
         const options = {
-            mimeType: formats.universal,
-            videoBitsPerSecond: calculateOptimalBitrate(duration, { mimeType: formats.universal })
+            mimeType: 'video/webm;codecs=vp9',
+            videoBitsPerSecond: calculateOptimalBitrate(duration)
         };
 
-        console.log('Recording with options:', options);
+        const stream = canvas.captureStream(60);
+        const recorder = new MediaRecorder(stream, options);
+        const chunks = [];
+        recorder.ondataavailable = e => chunks.push(e.data);
 
-        try {
-            const stream = canvas.captureStream(30);
-            const recorder = new MediaRecorder(stream, options);
-            const chunks = [];
-            recorder.ondataavailable = e => chunks.push(e.data);
+        const recordingPromise = new Promise((resolve, reject) => {
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm;codecs=vp9' });
+                resolve(blob);
+            };
+            recorder.onerror = reject;
+        });
 
-            const recordingPromise = new Promise((resolve, reject) => {
-                let recordingStartTime = Date.now();
-                
-                recorder.onstop = () => {
-                    loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Processing video...</p>';
-                    const blob = new Blob(chunks, { type: options.mimeType });
-                    resolve(blob);
-                };
-                
-                recorder.onerror = reject;
+        // Start recording
+        recorder.start();
 
-                const updateProgress = () => {
-                    if (recorder.state === 'recording') {
-                        const elapsed = (Date.now() - recordingStartTime) / 1000;
-                        const progress = Math.min(100, (elapsed / duration) * 100);
-                        loadingDiv.innerHTML = `<h3>Generating sticker...</h3><p>Recording: ${progress.toFixed(0)}%</p>`;
-                        if (elapsed < duration) {
-                            requestAnimationFrame(updateProgress);
-                        }
-                    }
-                };
-                updateProgress();
-            });
+        // Calculate exact duration including one extra frame for smooth loop
+        const exactDuration = (FRAME_DURATION * (totalFrames + 1));
+        
+        setTimeout(() => {
+            if (recorder.state === 'recording') {
+                recorder.stop();
+            }
+        }, exactDuration);
 
-            startTime = 0;
-            recorder.start();
-            
-            setTimeout(() => {
-                if (recorder.state === 'recording') {
-                    recorder.stop();
-                }
-            }, duration * 1000 + 100);
+        const blob = await recordingPromise;
+        loadingDiv.remove();
 
-            const blob = await recordingPromise;
-            loadingDiv.remove();
+        // Rest of the export dialog code...
+        const url = URL.createObjectURL(blob);
+        const fileSize = blob.size / 1024;
 
-            const url = URL.createObjectURL(blob);
-            const fileSize = blob.size / 1024;
-
-            const exportDiv = document.createElement('div');
-            exportDiv.className = 'export-dialog';
-            exportDiv.innerHTML = `
-                <h3>Export Animation</h3>
-                ${fileSize > 256 ? 
-                    `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's limit!</p>` 
-                    : ''}
-                <div class="format-group">
-                    <h4>Universal Format (${fileSize.toFixed(1)}KB)</h4>
-                    <p class="format-info">Works in all modern browsers and most apps</p>
-                    <button onclick="downloadSticker('${url}', 'universal', '${formats.universal.includes('mp4') ? 'mp4' : 'webm'}')" class="primary-btn">
-                        💾 Download ${formats.universal.includes('mp4') ? 'MP4' : 'WebM'}
-                    </button>
-                </div>
-                ${formats.telegram.includes('webm') ? `
-                    <div class="format-group">
-                        <h4>Telegram Sticker Format</h4>
-                        <p class="format-info">Optimized WebM format for Telegram stickers</p>
-                        <button onclick="downloadSticker('${url}', 'telegram', 'webm')" class="telegram-btn">
-                            📱 Download for Telegram
-                        </button>
-                    </div>
-                ` : ''}
-                <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
-            `;
-            document.body.appendChild(exportDiv);
-
-        } catch (recordingError) {
-            console.error('Recording failed:', recordingError);
-            throw new Error('Failed to start recording. Please try a different browser.');
-        }
+        const exportDiv = document.createElement('div');
+        exportDiv.className = 'export-dialog';
+        exportDiv.innerHTML = `
+            <h3>Export Telegram Sticker</h3>
+            ${fileSize > 256 ? 
+                `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's limit!</p>` 
+                : ''}
+            <div class="format-group" data-recommended="true">
+                <h4>Telegram Sticker Format</h4>
+                <p class="format-info">WebM/VP9 format (${fileSize.toFixed(1)}KB)</p>
+                <button onclick="downloadSticker('${url}', 'telegram', 'webm')" class="primary-btn">
+                    📱 Download for Telegram
+                </button>
+            </div>
+            <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
+        `;
+        document.body.appendChild(exportDiv);
 
     } catch (error) {
         console.error('Export failed:', error);
-        alert(`Export failed: ${error.message}\nPlease try a different browser or check your settings.`);
+        alert(`Export failed: ${error.message}\nFor Telegram stickers, please use Chrome or Edge browser which support WebM VP9 format.`);
         document.querySelector('.loading')?.remove();
     }
 }
@@ -824,30 +806,24 @@ async function exportForSticker() {
 function calculateOptimalBitrate(duration, format) {
     let optimalBitrate = Math.floor((CONFIG.EXPORT.TARGET_SIZE * 8) / duration);
     
-    // More conservative settings for MP4, especially on Safari
     if (format?.mimeType.includes('mp4')) {
-        // Even more conservative settings for Safari
+        // Less conservative settings for better quality
+        optimalBitrate = Math.min(optimalBitrate, 4000000); // Cap at 4Mbps for MP4
+        
+        // Even for Safari, allow higher quality
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         if (isSafari) {
-            // Very conservative settings for Safari
-            optimalBitrate = Math.min(optimalBitrate, 1000000); // Cap at 1Mbps for Safari
-            // Add more conservative scaling for Safari
-            if (duration <= 1.0) {
-                optimalBitrate = Math.min(optimalBitrate * 1.2, 1000000);
-            }
-        } else {
-            // Normal MP4 settings for other browsers
-            optimalBitrate = Math.min(optimalBitrate, 2000000); // Cap at 2Mbps for MP4
+            optimalBitrate = Math.min(optimalBitrate, 3000000); // Cap at 3Mbps for Safari
         }
     }
     
-    // Duration-based scaling
+    // More aggressive duration-based scaling for better quality
     if (duration <= 0.5) {
-        optimalBitrate = Math.min(optimalBitrate * 1.5, CONFIG.EXPORT.MAX_BITRATE);
+        optimalBitrate = Math.min(optimalBitrate * 2.0, CONFIG.EXPORT.MAX_BITRATE);
     } else if (duration <= 1.0) {
-        optimalBitrate = Math.min(optimalBitrate * 1.3, CONFIG.EXPORT.MAX_BITRATE);
+        optimalBitrate = Math.min(optimalBitrate * 1.7, CONFIG.EXPORT.MAX_BITRATE);
     } else if (duration <= 2.0) {
-        optimalBitrate = Math.min(optimalBitrate * 1.2, CONFIG.EXPORT.MAX_BITRATE);
+        optimalBitrate = Math.min(optimalBitrate * 1.4, CONFIG.EXPORT.MAX_BITRATE);
     }
     
     // Ensure minimum bitrate
@@ -1002,109 +978,26 @@ async function exportAsVideo() {
 }
 
 function getSupportedMimeType() {
-    // Better Safari detection
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || 
-                    (navigator.userAgent.includes('AppleWebKit/') && !navigator.userAgent.includes('Chrome'));
+    // Check for WebM VP9 support first
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+        return {
+            universal: 'video/webm;codecs=vp9',
+            telegram: 'video/webm;codecs=vp9'
+        };
+    }
     
-    console.log('Browser detection:', {
-        userAgent: navigator.userAgent,
-        isSafari: isSafari,
-        hasMediaRecorder: !!window.MediaRecorder
-    });
-
-    // Safari-specific handling
-    if (isSafari) {
-        // Try the most basic MP4 format for Safari
-        const safariFormat = 'video/mp4';
-        try {
-            if (MediaRecorder.isTypeSupported(safariFormat)) {
-                console.log('Using Safari MP4 format');
-                return {
-                    universal: safariFormat,
-                    telegram: safariFormat  // Safari only gets MP4
-                };
-            }
-        } catch (e) {
-            console.log('Safari format test failed:', e);
-            // If isTypeSupported fails, still try to use MP4 for Safari
-            return {
-                universal: safariFormat,
-                telegram: safariFormat
-            };
-        }
+    // Fallback to WebM VP8
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+        return {
+            universal: 'video/webm;codecs=vp8',
+            telegram: 'video/webm;codecs=vp8'
+        };
     }
-
-    // For other browsers, try formats in order
-    const formats = [
-        // MP4 formats first for universal
-        {
-            type: 'video/mp4;codecs=avc1.42E01E',
-            label: 'MP4 H.264 Baseline'
-        },
-        {
-            type: 'video/mp4;codecs=h264',
-            label: 'MP4 H.264'
-        },
-        {
-            type: 'video/mp4',
-            label: 'Basic MP4'
-        },
-        // WebM formats for Telegram
-        {
-            type: 'video/webm;codecs=vp9',
-            label: 'WebM VP9'
-        },
-        {
-            type: 'video/webm;codecs=vp8',
-            label: 'WebM VP8'
-        },
-        {
-            type: 'video/webm',
-            label: 'Basic WebM'
-        }
-    ];
-
-    // Find best MP4 format for universal
-    let universalFormat = null;
-    for (const format of formats.filter(f => f.type.includes('mp4'))) {
-        try {
-            if (MediaRecorder.isTypeSupported(format.type)) {
-                console.log(`Found supported universal format: ${format.label}`);
-                universalFormat = format.type;
-                break;
-            }
-        } catch (e) {
-            console.log(`Format test failed for ${format.label}:`, e);
-        }
-    }
-
-    // Find best WebM format for Telegram
-    let telegramFormat = null;
-    for (const format of formats.filter(f => f.type.includes('webm'))) {
-        try {
-            if (MediaRecorder.isTypeSupported(format.type)) {
-                console.log(`Found supported Telegram format: ${format.label}`);
-                telegramFormat = format.type;
-                break;
-            }
-        } catch (e) {
-            console.log(`Format test failed for ${format.label}:`, e);
-        }
-    }
-
-    // If no WebM support, use MP4 for both
-    if (!telegramFormat) {
-        telegramFormat = universalFormat;
-    }
-
-    // If no format found at all, throw error
-    if (!universalFormat) {
-        throw new Error('No supported video format found');
-    }
-
+    
+    // Last resort fallback to MP4
     return {
-        universal: universalFormat,
-        telegram: telegramFormat
+        universal: 'video/mp4',
+        telegram: 'video/webm;codecs=vp9' // This will trigger an error for Telegram export
     };
 }
 
