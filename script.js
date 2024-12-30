@@ -194,35 +194,87 @@ class ParticleEmitter {
         this.texture = texture;
         this.particles = [];
         this.active = false;
-        this.maxParticles = 100;  // Back to higher count
-        this.particlesPerFrame = 4;  // Emit more particles per frame
+        this.maxParticles = 50;
+        this.particlesPerBurst = 8;
         this.particlePool = [];
         this.lastEmitTime = 0;
-        this.emitInterval = 16; // Sync with typical frame rate (60fps)
+        this.burstInterval = 250;
+        this.burstSpread = 0.35;
+        this.gravity = 0.25;
     }
 
-    createParticle() {
+    createParticle(angleOffset = 0) {
         let particle = this.particlePool.pop() || new PIXI.Sprite(this.texture);
         
         particle.anchor.set(0.5);
-        particle.x = CONFIG.CANVAS.WIDTH * 0.32;
-        particle.y = CONFIG.CANVAS.HEIGHT * 0.92;
         
-        // Tighter angle control for shower effect
-        const angle = -Math.PI/3 + (Math.random() * 0.1);
-        const speed = 7 + Math.random(); // More consistent speed
+        // Emission point with slight variation
+        particle.x = CONFIG.CANVAS.WIDTH * (0.32 + (Math.random() - 0.5) * 0.02);
+        particle.y = CONFIG.CANVAS.HEIGHT * (0.90 + (Math.random() - 0.5) * 0.02);
+        
+        // Much more varied trajectory
+        const baseAngle = -Math.PI/4 + (Math.random() - 0.5) * 0.8;
+        const randomSpread = (Math.random() - 0.5) * this.burstSpread * 1.5;
+        const burstPower = 1.4 + Math.random() * 1.2;
+        const angle = baseAngle + randomSpread + angleOffset;
+        
+        // Varied speeds per particle
+        const speedVariation = 8 + Math.random() * 8;
+        const speed = speedVariation * burstPower;
+        
+        // Add some curved trajectories
+        const curveDirection = (Math.random() - 0.5) * 0.4;
         
         particle.velocity = {
             x: Math.cos(angle) * speed,
-            y: Math.sin(angle) * speed
+            y: Math.sin(angle) * speed,
+            curve: curveDirection
         };
         
-        particle.gravity = 0.3;
-        particle.alpha = 0.85;
-        particle.scale.set(0.35 + Math.random() * 0.1);
+        // Much smaller particles
+        const size = 0.12 + Math.random() * 0.15; // Reduced from 0.2 + random * 0.3
+        particle.scale.set(size);
+        
+        // Initial random rotation
+        particle.rotation = Math.random() * Math.PI * 2;
+        
+        // Full opacity with the gradient drop
+        particle.alpha = 1.0;
+        particle.tint = 0xFFFFFF;
+        
+        // Faster rotation for more dynamic effect
+        particle.spinSpeed = (Math.random() - 0.5) * 1.0; // Increased spin for more visible rotation
+        particle.rotationWobble = {
+            speed: 0.15 + Math.random() * 0.3,
+            amplitude: 0.4 + Math.random() * 0.6,
+            offset: Math.random() * Math.PI * 2
+        };
+        
+        // More varied wobble
+        particle.wobble = {
+            speed: 0.1 + Math.random() * 0.2,
+            amplitude: 0.2 + Math.random() * 0.4,
+            offset: Math.random() * Math.PI * 2
+        };
+        
+        // Varied gravity per particle
+        particle.gravity = 0.2 + Math.random() * 0.4;
+        particle.lifetime = 0;
+        particle.maxLife = 25 + Math.random() * 15;
         
         this.container.addChild(particle);
         this.particles.push(particle);
+    }
+
+    createBurst() {
+        // Random burst size
+        const burstSize = this.particlesPerBurst + Math.floor(Math.random() * 5);
+        
+        for (let i = 0; i < burstSize; i++) {
+            const spreadFactor = (i / burstSize) * Math.PI * 0.4;
+            const angleOffset = Math.sin(spreadFactor) * this.burstSpread;
+            this.createParticle(angleOffset);
+        }
     }
 
     update() {
@@ -230,26 +282,52 @@ class ParticleEmitter {
 
         const now = performance.now();
         
-        // Emit particles at consistent intervals
-        if (now - this.lastEmitTime >= this.emitInterval) {
-            if (this.particles.length < this.maxParticles) {
-                for (let i = 0; i < this.particlesPerFrame; i++) {
-                    this.createParticle();
-                }
-            }
+        // More varied burst timing
+        if (now - this.lastEmitTime >= this.burstInterval * (0.8 + Math.random() * 0.4)) {
+            this.createBurst();
             this.lastEmitTime = now;
         }
 
-        // Update existing particles
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const particle = this.particles[i];
-            particle.velocity.y += particle.gravity;
-            particle.x += particle.velocity.x;
+            
+            particle.lifetime++;
+            
+            // Apply curved trajectory
+            particle.velocity.x += particle.velocity.curve;
+            
+            // Wobble movement
+            const wobble = Math.sin(particle.lifetime * particle.wobble.speed + particle.wobble.offset) 
+                * particle.wobble.amplitude;
+            particle.velocity.x += wobble * 0.15;
+            
+            // Crazy rotation
+            const rotationWobble = Math.sin(particle.lifetime * particle.rotationWobble.speed + particle.rotationWobble.offset) 
+                * particle.rotationWobble.amplitude;
+            particle.rotation += particle.spinSpeed + rotationWobble;
+            
+            // Update position with slight random variation
+            particle.velocity.y += particle.gravity + (Math.random() - 0.5) * 0.1;
+            particle.x += particle.velocity.x + (Math.random() - 0.5) * 0.3;
             particle.y += particle.velocity.y;
-            particle.alpha *= 0.97; // Faster fade out for better flow
+            
+            // Edge fading
+            const edgeFadeDistance = 40;
+            const edgeFade = Math.min(
+                (CONFIG.CANVAS.HEIGHT - particle.y) / edgeFadeDistance,
+                particle.y / edgeFadeDistance,
+                (CONFIG.CANVAS.WIDTH - particle.x) / edgeFadeDistance,
+                particle.x / edgeFadeDistance
+            );
+            
+            const lifeFade = 1 - (particle.lifetime / particle.maxLife);
+            particle.alpha = Math.min(1, Math.max(0, edgeFade, lifeFade));
 
-            if (particle.alpha < 0.05 || 
-                particle.y > CONFIG.CANVAS.HEIGHT) {
+            // Remove dead particles
+            if (particle.alpha <= 0 || 
+                particle.y > CONFIG.CANVAS.HEIGHT || 
+                particle.x < 0 || 
+                particle.x > CONFIG.CANVAS.WIDTH) {
                 this.container.removeChild(particle);
                 this.particles.splice(i, 1);
                 this.particlePool.push(particle);
@@ -260,10 +338,7 @@ class ParticleEmitter {
     start() {
         this.active = true;
         this.lastEmitTime = performance.now();
-        // Create initial burst
-        for (let i = 0; i < 45; i++) {
-            this.createParticle();
-        }
+        this.createBurst();
     }
 
     stop() {
@@ -715,37 +790,36 @@ async function exportForSticker() {
         }
 
         if (!MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
-            throw new Error('Your browser does not support WebM VP9 format required for Telegram stickers. Please try using Chrome or Edge.');
+            throw new Error('Your browser does not support WebM VP9 format required for Telegram stickers.');
         }
 
         const loopCount = parseInt(document.getElementById('loop-count').value);
         const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
         const duration = (FRAME_DURATION * totalFrames) / 1000;
 
-        // Reset all animation states
+        // Reset animation states
         startTime = performance.now();
-        animationStartTime = startTime; // Reset zoom animation time
+        animationStartTime = startTime;
         
-        // Force initial transform update
         await new Promise(resolve => {
             requestAnimationFrame(() => {
                 if (piggySprite) {
                     piggySprite.gotoAndPlay(0);
                 }
-                updateTransform(); // Force transform update
+                updateTransform();
                 resolve();
             });
         });
 
-        // Wait one more frame to ensure everything is stable
         await new Promise(requestAnimationFrame);
 
         const options = {
             mimeType: 'video/webm;codecs=vp9',
-            videoBitsPerSecond: calculateOptimalBitrate(duration)
+            videoBitsPerSecond: calculateOptimalBitrate(duration),
+            frameRate: 30
         };
 
-        const stream = canvas.captureStream(60);
+        const stream = canvas.captureStream(30);
         const recorder = new MediaRecorder(stream, options);
         const chunks = [];
         recorder.ondataavailable = e => chunks.push(e.data);
@@ -758,10 +832,9 @@ async function exportForSticker() {
             recorder.onerror = reject;
         });
 
-        // Start recording
         recorder.start();
 
-        // Calculate exact duration including one extra frame for smooth loop
+        // Use original duration (not doubled)
         const exactDuration = (FRAME_DURATION * (totalFrames + 1));
         
         setTimeout(() => {
@@ -773,20 +846,13 @@ async function exportForSticker() {
         const blob = await recordingPromise;
         loadingDiv.remove();
 
-        // Rest of the export dialog code...
         const url = URL.createObjectURL(blob);
-        const fileSize = blob.size / 1024;
-
         const exportDiv = document.createElement('div');
         exportDiv.className = 'export-dialog';
         exportDiv.innerHTML = `
             <h3>Export Telegram Sticker</h3>
-            ${fileSize > 256 ? 
-                `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's limit!</p>` 
-                : ''}
             <div class="format-group" data-recommended="true">
-                <h4>Telegram Sticker Format</h4>
-                <p class="format-info">WebM/VP9 format (${fileSize.toFixed(1)}KB)</p>
+                <h4>Ready to Upload</h4>
                 <button onclick="downloadSticker('${url}', 'telegram', 'webm')" class="primary-btn">
                     📱 Download for Telegram
                 </button>
@@ -1013,23 +1079,7 @@ function downloadSticker(url, platform, extension) {
 }
 
 function createWaterDropTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 24;  // Increased texture size
-    canvas.height = 24;
-    const ctx = canvas.getContext('2d');
-
-    // Enhanced gradient for better visibility
-    const gradient = ctx.createRadialGradient(12, 12, 0, 12, 12, 12);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.95)'); // Brighter center
-    gradient.addColorStop(0.4, 'rgba(134, 209, 232, 0.8)'); // More opaque middle
-    gradient.addColorStop(1, 'rgba(134, 209, 232, 0)');
-
-    ctx.beginPath();
-    ctx.fillStyle = gradient;
-    ctx.arc(12, 12, 12, 0, Math.PI * 2);
-    ctx.fill();
-
-    return PIXI.Texture.from(canvas);
+    return PIXI.Texture.from('https://res.cloudinary.com/dakoxedxt/image/upload/t_Gradient fade/v1735593261/drop2_klw3uo.png');
 }
 
 async function loadPiggySprites() {
