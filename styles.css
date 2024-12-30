@@ -191,7 +191,7 @@ label {
     transform: translate(-50%, -50%);
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
-    padding: 20px;
+    padding: 15px;
     border-radius: 16px;
     box-shadow: 0 4px 32px var(--shadow);
     z-index: 1000;
@@ -205,20 +205,6 @@ label {
 
 .quality-settings {
     margin: 20px 0;
-}
-
-.quality-settings select {
-    width: 100%;
-    padding: 8px;
-    border-radius: 8px;
-    border: 1px solid var(--piggy-pink);
-    margin-bottom: 10px;
-}
-
-.bitrate-info {
-    margin-top: 10px;
-    font-size: 14px;
-    color: var(--text);
 }
 
 .size-warning {
@@ -656,5 +642,55 @@ input[type="range"].styled-slider::-webkit-slider-runnable-track {
     .export-btn:active {
         opacity: 0.9;
     }
+}
+
+.format-group {
+    margin: 12px 0;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 12px;
+}
+
+.format-group.disabled {
+    opacity: 0.7;
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.format-group h4 {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.format-info {
+    margin: 8px 0 12px 0;
+    font-size: 12px;
+    color: var(--text);
+    opacity: 0.8;
+}
+
+.format-info.warning {
+    color: #ff4444;
+    opacity: 1;
+}
+
+.format-group button {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.primary-btn {
+    background: var(--piggy-pink);
+    color: white;
+}
+
+.telegram-btn {
+    background: #2AABEE;
+    color: white;
+}
+
+.export-dialog {
+    min-width: 280px;
+    max-width: 320px;
 }
  

@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/gh/jnordberg/gif.js/dist/gif.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/jnordberg/gif.js/dist/gif.worker.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
-    <link rel="icon" type="image/x-icon" href="data:image/x-icon;,">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'></svg>">
     <style>
         .loading {
             position: fixed;
@@ -95,6 +95,7 @@
                         <input type="range" id="loop-count" class="styled-slider" min="1" max="24" value="3" step="1">
                         <span id="loop-count-value">Loop Count: <span id="loop-count-display">3</span></span>
                         <span id="duration-display"></span>
+                        <span id="quality-indicator" title="Estimated export quality"></span>
                     </div>
                 </div>
             </div>

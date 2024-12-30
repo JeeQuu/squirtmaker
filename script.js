@@ -30,11 +30,46 @@ const CONFIG = {
         HEIGHT: 512
     },
     EXPORT: {
-        MAX_SIZE: 256 * 1024, // 256KB (Telegram limit)
+        MAX_SIZE: 256 * 1024,    // 256KB (Telegram limit)
+        TARGET_SIZE: 252 * 1024, // Target closer to limit (252KB)
+        MIN_BITRATE: 500000,     // Increased minimum to 500Kbps
+        MAX_BITRATE: 6000000,    // Increased maximum to 6Mbps for short clips
         QUALITY_SETTINGS: {
-            high: 2000000,    // 2Mbps
-            normal: 1000000,  // 1Mbps
-            low: 500000      // 500Kbps
+            high: 2000000,
+            normal: 1000000,
+            low: 500000
+        },
+        FORMATS: {
+            WEBM: {
+                mimeType: 'video/webm;codecs=vp9',
+                extension: 'webm',
+                label: 'WebM/VP9',
+                priority: 1
+            },
+            WEBM_VP8: {
+                mimeType: 'video/webm;codecs=vp8',
+                extension: 'webm',
+                label: 'WebM/VP8',
+                priority: 2
+            },
+            MP4_H264: {
+                mimeType: 'video/mp4;codecs=avc1.42E01E',  // Standard H.264 baseline profile
+                extension: 'mp4',
+                label: 'MP4/H.264',
+                priority: 3
+            },
+            MP4_SIMPLE: {
+                mimeType: 'video/mp4;codecs=h264',
+                extension: 'mp4',
+                label: 'MP4/H.264',
+                priority: 4
+            },
+            MP4_DEFAULT: {
+                mimeType: 'video/mp4',
+                extension: 'mp4',
+                label: 'MP4',
+                priority: 5
+            }
         }
     },
     BITRATES: {
@@ -52,9 +87,9 @@ const SPEEDS = {
     smooth: 30       // ≈ 335ms total cycle (30ms × 11 frames = 330ms)
 };
 const MAX_LOOPS = {
-    normal: 15,      // Adjusted for 11 frames
-    squirtaholic: 24,  // Adjusted for faster speed
-    smooth: 9        // Adjusted for slower speed
+    normal: Math.floor(3000 / (SPEEDS.normal * FRAMES_IN_SEQUENCE)),      // ~15 loops
+    squirtaholic: Math.floor(3000 / (SPEEDS.squirtaholic * FRAMES_IN_SEQUENCE)), // ~24 loops
+    smooth: Math.floor(3000 / (SPEEDS.smooth * FRAMES_IN_SEQUENCE))       // ~9 loops
 };
 let FRAME_DURATION = SPEEDS.normal;
 let currentMaxLoops = MAX_LOOPS.normal;
@@ -159,11 +194,11 @@ class ParticleEmitter {
         this.texture = texture;
         this.particles = [];
         this.active = false;
-        this.maxParticles = 100;  // Keep this the same
-        this.particlesPerFrame = 4;  // Keep emission rate
+        this.maxParticles = 100;  // Back to higher count
+        this.particlesPerFrame = 4;  // Emit more particles per frame
         this.particlePool = [];
         this.lastEmitTime = 0;
-        this.emitInterval = 16;
+        this.emitInterval = 16; // Sync with typical frame rate (60fps)
     }
 
     createParticle() {
@@ -173,18 +208,18 @@ class ParticleEmitter {
         particle.x = CONFIG.CANVAS.WIDTH * 0.32;
         particle.y = CONFIG.CANVAS.HEIGHT * 0.92;
         
-        // Adjust angle and speed for higher/longer trajectory
-        const angle = -Math.PI/2.8 + (Math.random() * 0.1); // More upward angle (-π/2.8 instead of -π/3)
-        const speed = 8.5 + Math.random(); // Increased base speed from 7 to 8.5
+        // Tighter angle control for shower effect
+        const angle = -Math.PI/3 + (Math.random() * 0.1);
+        const speed = 7 + Math.random(); // More consistent speed
         
         particle.velocity = {
             x: Math.cos(angle) * speed,
             y: Math.sin(angle) * speed
         };
         
-        particle.gravity = 0.25; // Reduced gravity for longer airtime
+        particle.gravity = 0.3;
         particle.alpha = 0.85;
-        particle.scale.set(0.45 + Math.random() * 0.15); // Increased size (was 0.35 + 0.1)
+        particle.scale.set(0.35 + Math.random() * 0.1);
         
         this.container.addChild(particle);
         this.particles.push(particle);
@@ -242,14 +277,24 @@ function updateDurationDisplay() {
     const loopCount = parseInt(document.getElementById('loop-count').value);
     const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
     const totalDuration = (FRAME_DURATION * totalFrames) / 1000;
+    
+    // Enforce 3 second limit
+    if (totalDuration > 3) {
+        const maxLoops = Math.floor(3000 / (FRAME_DURATION * FRAMES_IN_SEQUENCE));
+        document.getElementById('loop-count').value = maxLoops;
+        document.getElementById('loop-count-display').textContent = maxLoops;
+        return updateDurationDisplay(); // Recalculate with adjusted loops
+    }
+    
     document.getElementById('duration-display').textContent = `${totalDuration.toFixed(2)}s`;
-
-    // If we have a video background, adjust its duration but keep original speed
+    
+    // Update video loop if needed
     if (backgroundSprite?.texture.baseTexture.resource?.source instanceof HTMLVideoElement) {
         const video = backgroundSprite.texture.baseTexture.resource.source;
-        // Don't change playbackRate, just let it loop the specified number of times
         video.loop = true;
     }
+    
+    updateQualityIndicator(totalDuration);
 }
 
 function updateVideoControls() {
@@ -282,9 +327,14 @@ function setSpeed(speed) {
     FRAME_DURATION = SPEEDS[speed];
     speedInfo.textContent = `${speed}`;
     
-    currentMaxLoops = MAX_LOOPS[speed];
+    // Calculate max loops for current speed to stay under 3 seconds
+    const maxLoopsFor3Sec = Math.floor(3000 / (FRAME_DURATION * FRAMES_IN_SEQUENCE));
+    currentMaxLoops = Math.min(MAX_LOOPS[speed], maxLoopsFor3Sec);
+    
     const loopInput = document.getElementById('loop-count');
     loopInput.max = currentMaxLoops;
+    
+    // Ensure current value doesn't exceed new max
     if (parseInt(loopInput.value) > currentMaxLoops) {
         loopInput.value = currentMaxLoops;
     }
@@ -296,7 +346,7 @@ function setSpeed(speed) {
     
     updateDurationDisplay();
     startTime = 0;
-    animationStartTime = 0; // Reset animation timing when changing speed
+    animationStartTime = 0;
 }
 
 async function handleBackgroundUpload(event) {
@@ -420,6 +470,11 @@ async function initialize() {
             }
         });
 
+        // Check if PIXI is available
+        if (typeof PIXI === 'undefined') {
+            throw new Error('PIXI.js not loaded');
+        }
+
         // Initialize GIF first
         try {
             piggyGif = await initializeGif(DEFAULT_GIF_URL);
@@ -428,12 +483,21 @@ async function initialize() {
             throw new Error('Failed to load Piggy animation');
         }
 
-        // Initialize PIXI and get containers
-        const containers = await initializePixiParticles();
-        backgroundContainer = containers.backgroundContainer;
-        particleContainer = containers.particleContainer;
-        piggyContainer = containers.piggyContainer;
-        
+        // Initialize PIXI with error handling
+        try {
+            // Initialize PIXI and get containers
+            const containers = await initializePixiParticles();
+            if (!containers) {
+                throw new Error('Failed to initialize PIXI containers');
+            }
+            backgroundContainer = containers.backgroundContainer;
+            particleContainer = containers.particleContainer;
+            piggyContainer = containers.piggyContainer;
+        } catch (pixiError) {
+            console.error('PIXI initialization failed:', pixiError);
+            throw new Error('Failed to initialize animation system');
+        }
+
         // Load Piggy frames and create sprite
         const piggyFrames = await loadPiggySprites();
         piggySprite = await createPiggySprite(piggyFrames, piggyContainer);
@@ -470,6 +534,7 @@ async function initialize() {
     } catch (error) {
         console.error('Failed to initialize:', error);
         alert('Failed to initialize. Please refresh the page.');
+        throw error; // Re-throw to trigger error recovery
     }
 }
 
@@ -479,8 +544,17 @@ function setupEventListeners() {
     cropY.addEventListener('input', updateTransform);
     
     document.getElementById('loop-count').addEventListener('input', function(e) {
+        const totalDuration = (FRAME_DURATION * FRAMES_IN_SEQUENCE * e.target.value) / 1000;
+        
+        // If duration would exceed 3 seconds, adjust the value
+        if (totalDuration > 3) {
+            const maxLoops = Math.floor(3000 / (FRAME_DURATION * FRAMES_IN_SEQUENCE));
+            e.target.value = maxLoops;
+        }
+        
         document.getElementById('loop-count-display').textContent = e.target.value;
         updateDurationDisplay();
+        
         // Update slider progress
         const progress = (e.target.value - e.target.min) / (e.target.max - e.target.min) * 100;
         e.target.style.setProperty('--slider-progress', `${progress}%`);
@@ -625,67 +699,163 @@ function updateTransform() {
 
 async function exportForSticker() {
     try {
-        // Reset animation state
-        startTime = 0;
-        if (piggySprite) {
-            piggySprite.gotoAndPlay(0);
+        // Check if PIXI app is initialized
+        if (!pixiApp || !pixiApp.view) {
+            throw new Error('Animation system not properly initialized. Please refresh the page.');
         }
 
-        const exportDiv = document.createElement('div');
-        exportDiv.className = 'export-dialog';
-        exportDiv.innerHTML = `
-            <h3>Export Sticker</h3>
-            <div class="quality-settings">
-                <h4>Quality Settings</h4>
-                <select id="quality-preset" onchange="updateQualityControls()">
-                    <option value="${CONFIG.BITRATES.AUTO}">Auto (Telegram Safe)</option>
-                    <option value="${CONFIG.BITRATES.TELEGRAM}">Telegram Optimized</option>
-                    <option value="${CONFIG.BITRATES.CUSTOM}">Custom</option>
-                </select>
-                <div id="custom-bitrate" style="display: none;">
-                    <label>Custom Bitrate (bps):
-                        <input type="range" 
-                               id="custom-bitrate-value" 
-                               min="100000" 
-                               max="4000000" 
-                               step="100000" 
-                               value="1500000"
-                               class="styled-slider"
-                               onchange="updateQualityControls()">
-                        <span id="bitrate-value-display">1.5 Mbps</span>
-                    </label>
-                </div>
-                <div class="bitrate-info">
-                    <span id="bitrate-display"></span>
-                </div>
-            </div>
-            <button onclick="exportAsVideo()">Export for Telegram</button>
-            <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
-        `;
-        document.body.appendChild(exportDiv);
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'loading';
+        loadingDiv.innerHTML = '<h3>Preparing Export...</h3>';
+        document.body.appendChild(loadingDiv);
+
+        // Use the preview canvas as fallback if PIXI view isn't available
+        const canvas = pixiApp.view || document.getElementById('preview-canvas');
+        if (!canvas) {
+            throw new Error('No canvas found for recording');
+        }
+
+        const loopCount = parseInt(document.getElementById('loop-count').value);
+        const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
+        const duration = (FRAME_DURATION * totalFrames) / 1000;
         
-        setTimeout(() => updateQualityControls(), 0);
+        // Check MediaRecorder support first
+        if (!window.MediaRecorder) {
+            throw new Error('Your browser does not support video recording');
+        }
+
+        // Try to get supported MIME types
+        const formats = getSupportedMimeType();
+        console.log('Supported formats:', formats);
+
+        // Configure MediaRecorder options for universal format
+        const options = {
+            mimeType: formats.universal,
+            videoBitsPerSecond: calculateOptimalBitrate(duration, { mimeType: formats.universal })
+        };
+
+        console.log('Recording with options:', options);
+
+        try {
+            const stream = canvas.captureStream(30);
+            const recorder = new MediaRecorder(stream, options);
+            const chunks = [];
+            recorder.ondataavailable = e => chunks.push(e.data);
+
+            const recordingPromise = new Promise((resolve, reject) => {
+                let recordingStartTime = Date.now();
+                
+                recorder.onstop = () => {
+                    loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Processing video...</p>';
+                    const blob = new Blob(chunks, { type: options.mimeType });
+                    resolve(blob);
+                };
+                
+                recorder.onerror = reject;
+
+                const updateProgress = () => {
+                    if (recorder.state === 'recording') {
+                        const elapsed = (Date.now() - recordingStartTime) / 1000;
+                        const progress = Math.min(100, (elapsed / duration) * 100);
+                        loadingDiv.innerHTML = `<h3>Generating sticker...</h3><p>Recording: ${progress.toFixed(0)}%</p>`;
+                        if (elapsed < duration) {
+                            requestAnimationFrame(updateProgress);
+                        }
+                    }
+                };
+                updateProgress();
+            });
+
+            startTime = 0;
+            recorder.start();
+            
+            setTimeout(() => {
+                if (recorder.state === 'recording') {
+                    recorder.stop();
+                }
+            }, duration * 1000 + 100);
+
+            const blob = await recordingPromise;
+            loadingDiv.remove();
+
+            const url = URL.createObjectURL(blob);
+            const fileSize = blob.size / 1024;
+
+            const exportDiv = document.createElement('div');
+            exportDiv.className = 'export-dialog';
+            exportDiv.innerHTML = `
+                <h3>Export Animation</h3>
+                ${fileSize > 256 ? 
+                    `<p class="size-warning">Warning: File size (${fileSize.toFixed(1)}KB) exceeds Telegram's limit!</p>` 
+                    : ''}
+                <div class="format-group">
+                    <h4>Universal Format (${fileSize.toFixed(1)}KB)</h4>
+                    <p class="format-info">Works in all modern browsers and most apps</p>
+                    <button onclick="downloadSticker('${url}', 'universal', '${formats.universal.includes('mp4') ? 'mp4' : 'webm'}')" class="primary-btn">
+                        💾 Download ${formats.universal.includes('mp4') ? 'MP4' : 'WebM'}
+                    </button>
+                </div>
+                ${formats.telegram.includes('webm') ? `
+                    <div class="format-group">
+                        <h4>Telegram Sticker Format</h4>
+                        <p class="format-info">Optimized WebM format for Telegram stickers</p>
+                        <button onclick="downloadSticker('${url}', 'telegram', 'webm')" class="telegram-btn">
+                            📱 Download for Telegram
+                        </button>
+                    </div>
+                ` : ''}
+                <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
+            `;
+            document.body.appendChild(exportDiv);
+
+        } catch (recordingError) {
+            console.error('Recording failed:', recordingError);
+            throw new Error('Failed to start recording. Please try a different browser.');
+        }
+
     } catch (error) {
-        console.error('Export dialog creation failed:', error);
-        alert('Failed to prepare export. Please try again.');
+        console.error('Export failed:', error);
+        alert(`Export failed: ${error.message}\nPlease try a different browser or check your settings.`);
+        document.querySelector('.loading')?.remove();
     }
 }
 
-function calculateOptimalBitrate(duration) {
-    const MAX_SIZE_BYTES = CONFIG.EXPORT.MAX_SIZE;
-    const TARGET_SIZE_BITS = MAX_SIZE_BYTES * 8;
-    const COMPRESSION_COMPENSATION = 2.2; // Compensation factor for WebM compression
+// Update calculateOptimalBitrate to handle different formats
+function calculateOptimalBitrate(duration, format) {
+    let optimalBitrate = Math.floor((CONFIG.EXPORT.TARGET_SIZE * 8) / duration);
     
-    // Calculate target bitrate to stay under size limit
-    const targetBitrate = Math.floor((TARGET_SIZE_BITS / duration) * COMPRESSION_COMPENSATION);
+    // More conservative settings for MP4, especially on Safari
+    if (format?.mimeType.includes('mp4')) {
+        // Even more conservative settings for Safari
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        if (isSafari) {
+            // Very conservative settings for Safari
+            optimalBitrate = Math.min(optimalBitrate, 1000000); // Cap at 1Mbps for Safari
+            // Add more conservative scaling for Safari
+            if (duration <= 1.0) {
+                optimalBitrate = Math.min(optimalBitrate * 1.2, 1000000);
+            }
+        } else {
+            // Normal MP4 settings for other browsers
+            optimalBitrate = Math.min(optimalBitrate, 2000000); // Cap at 2Mbps for MP4
+        }
+    }
     
-    console.log('Duration:', duration, 
-                'Target size (KB):', MAX_SIZE_BYTES / 1024, 
-                'Compensated bitrate:', targetBitrate,
-                'Estimated final size (KB):', 
-                ((targetBitrate * duration) / 8 / 1024 / COMPRESSION_COMPENSATION).toFixed(1));
+    // Duration-based scaling
+    if (duration <= 0.5) {
+        optimalBitrate = Math.min(optimalBitrate * 1.5, CONFIG.EXPORT.MAX_BITRATE);
+    } else if (duration <= 1.0) {
+        optimalBitrate = Math.min(optimalBitrate * 1.3, CONFIG.EXPORT.MAX_BITRATE);
+    } else if (duration <= 2.0) {
+        optimalBitrate = Math.min(optimalBitrate * 1.2, CONFIG.EXPORT.MAX_BITRATE);
+    }
     
-    return targetBitrate;
+    // Ensure minimum bitrate
+    optimalBitrate = Math.max(optimalBitrate, CONFIG.EXPORT.MIN_BITRATE);
+    
+    console.log(`Format: ${format?.mimeType}, Duration: ${duration}s, Bitrate: ${Math.round(optimalBitrate/1000)}Kbps`);
+    
+    return Math.floor(optimalBitrate);
 }
 
 function updateQualityControls() {
@@ -733,70 +903,78 @@ function getBitrateForExport() {
 }
 
 async function exportAsVideo() {
-    let loadingDiv = null;
     try {
-        loadingDiv = document.createElement('div');
+        const loadingDiv = document.createElement('div');
         loadingDiv.className = 'loading';
-        loadingDiv.innerHTML = '<h3>Preparing...</h3>';
+        loadingDiv.innerHTML = '<h3>Preparing Export...</h3>';
         document.body.appendChild(loadingDiv);
 
-        const mediaStream = pixiApp.view.captureStream(30);
-        
+        // Check if MediaRecorder is supported
+        if (!window.MediaRecorder) {
+            throw new Error('MediaRecorder is not supported in this browser');
+        }
+
+        // Validate canvas
+        const canvas = document.getElementById('preview-canvas');
+        if (!canvas) {
+            throw new Error('Canvas element not found');
+        }
+
         const loopCount = parseInt(document.getElementById('loop-count').value);
         const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
         const duration = (FRAME_DURATION * totalFrames) / 1000;
-
-        // Use a single high bitrate for the entire recording
+        const optimalBitrate = calculateOptimalBitrate(duration);
+        
+        const mediaStream = canvas.captureStream(30);
+        
         const options = {
-            mimeType: 'video/webm;codecs=vp9',
-            videoBitsPerSecond: 3000000 // Fixed 3Mbps
+            mimeType: getSupportedMimeType(),
+            videoBitsPerSecond: getBitrateForExport()
         };
 
+        const recorder = new MediaRecorder(mediaStream, options);
         const chunks = [];
         
+        recorder.ondataavailable = e => chunks.push(e.data);
+
         const recordingPromise = new Promise((resolve, reject) => {
-            const recorder = new MediaRecorder(mediaStream, options);
-            
-            recorder.ondataavailable = e => chunks.push(e.data);
+            let recordingStartTime = Date.now();
             
             recorder.onstop = () => {
-                try {
-                    const blob = new Blob(chunks, { type: 'video/webm;codecs=vp9' });
-                    resolve(blob);
-                } catch (error) {
-                    reject(error);
-                }
+                loadingDiv.innerHTML = '<h3>Generating sticker...</h3><p>Processing video...</p>';
+                const blob = new Blob(chunks, { type: options.mimeType });
+                resolve(blob);
             };
             
             recorder.onerror = reject;
 
-            // Reset animation state
-            startTime = 0;
-            if (piggySprite) {
-                piggySprite.gotoAndPlay(0);
-            }
-
-            loadingDiv.innerHTML = '<h3>Recording...</h3>';
-            recorder.start();
-
-            setTimeout(() => {
-                try {
-                    if (recorder.state === 'recording') {
-                        loadingDiv.innerHTML = '<h3>Finalizing...</h3>';
-                        recorder.stop();
+            const updateProgress = () => {
+                if (recorder.state === 'recording') {
+                    const elapsed = (Date.now() - recordingStartTime) / 1000;
+                    const progress = Math.min(100, (elapsed / duration) * 100);
+                    loadingDiv.innerHTML = `<h3>Generating sticker...</h3><p>Recording: ${progress.toFixed(0)}%</p>`;
+                    if (elapsed < duration) {
+                        requestAnimationFrame(updateProgress);
                     }
-                } catch (error) {
-                    reject(error);
                 }
-            }, duration * 1000 + 100);
+            };
+            updateProgress();
         });
 
+        startTime = 0;
+        recorder.start();
+        
+        setTimeout(() => {
+            if (recorder.state === 'recording') {
+                recorder.stop();
+            }
+        }, duration * 1000 + 100);
+
         const blob = await recordingPromise;
+        loadingDiv.remove();
+
         const url = URL.createObjectURL(blob);
         const fileSize = blob.size / 1024;
-
-        loadingDiv.remove();
-        loadingDiv = null;
 
         const exportDiv = document.createElement('div');
         exportDiv.className = 'export-dialog';
@@ -817,36 +995,117 @@ async function exportAsVideo() {
 
     } catch (error) {
         console.error('Export failed:', error);
-        if (loadingDiv) loadingDiv.remove();
-        alert(`Export failed: ${error.message}`);
+        alert(`Export failed: ${error.message}\nPlease try a different browser or check your settings.`);
+    } finally {
+        document.querySelector('.loading')?.remove();
     }
-}
-
-// Add this helper function to trim the buffer frames
-async function trimBuffer(blob, bufferDuration) {
-    // For now, return the original blob
-    // In a future update, we could implement actual video trimming
-    return blob;
 }
 
 function getSupportedMimeType() {
-    const possibleTypes = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/mp4;codecs=h264,aac',
-        'video/mp4',
-        'video/webm;codecs=h264',
-        'video/webm'
-    ];
+    // Better Safari detection
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || 
+                    (navigator.userAgent.includes('AppleWebKit/') && !navigator.userAgent.includes('Chrome'));
+    
+    console.log('Browser detection:', {
+        userAgent: navigator.userAgent,
+        isSafari: isSafari,
+        hasMediaRecorder: !!window.MediaRecorder
+    });
 
-    for (const type of possibleTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
-            console.log('Using MIME type:', type);
-            return type;
+    // Safari-specific handling
+    if (isSafari) {
+        // Try the most basic MP4 format for Safari
+        const safariFormat = 'video/mp4';
+        try {
+            if (MediaRecorder.isTypeSupported(safariFormat)) {
+                console.log('Using Safari MP4 format');
+                return {
+                    universal: safariFormat,
+                    telegram: safariFormat  // Safari only gets MP4
+                };
+            }
+        } catch (e) {
+            console.log('Safari format test failed:', e);
+            // If isTypeSupported fails, still try to use MP4 for Safari
+            return {
+                universal: safariFormat,
+                telegram: safariFormat
+            };
         }
     }
 
-    throw new Error('No supported video format found');
+    // For other browsers, try formats in order
+    const formats = [
+        // MP4 formats first for universal
+        {
+            type: 'video/mp4;codecs=avc1.42E01E',
+            label: 'MP4 H.264 Baseline'
+        },
+        {
+            type: 'video/mp4;codecs=h264',
+            label: 'MP4 H.264'
+        },
+        {
+            type: 'video/mp4',
+            label: 'Basic MP4'
+        },
+        // WebM formats for Telegram
+        {
+            type: 'video/webm;codecs=vp9',
+            label: 'WebM VP9'
+        },
+        {
+            type: 'video/webm;codecs=vp8',
+            label: 'WebM VP8'
+        },
+        {
+            type: 'video/webm',
+            label: 'Basic WebM'
+        }
+    ];
+
+    // Find best MP4 format for universal
+    let universalFormat = null;
+    for (const format of formats.filter(f => f.type.includes('mp4'))) {
+        try {
+            if (MediaRecorder.isTypeSupported(format.type)) {
+                console.log(`Found supported universal format: ${format.label}`);
+                universalFormat = format.type;
+                break;
+            }
+        } catch (e) {
+            console.log(`Format test failed for ${format.label}:`, e);
+        }
+    }
+
+    // Find best WebM format for Telegram
+    let telegramFormat = null;
+    for (const format of formats.filter(f => f.type.includes('webm'))) {
+        try {
+            if (MediaRecorder.isTypeSupported(format.type)) {
+                console.log(`Found supported Telegram format: ${format.label}`);
+                telegramFormat = format.type;
+                break;
+            }
+        } catch (e) {
+            console.log(`Format test failed for ${format.label}:`, e);
+        }
+    }
+
+    // If no WebM support, use MP4 for both
+    if (!telegramFormat) {
+        telegramFormat = universalFormat;
+    }
+
+    // If no format found at all, throw error
+    if (!universalFormat) {
+        throw new Error('No supported video format found');
+    }
+
+    return {
+        universal: universalFormat,
+        telegram: telegramFormat
+    };
 }
 
 function downloadSticker(url, platform, extension) {
@@ -1075,7 +1334,7 @@ pixiApp?.ticker.add(() => {
 // Update how we call initialize
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => initialize());
-            } else {
+} else {
     initialize();
 }
 
@@ -1096,4 +1355,23 @@ function toggleMirrorY() {
     btn.classList.toggle('active', mirrorY);
     console.log('New mirrorY state:', mirrorY);
     updateTransform();
+}
+
+// Add this function
+function updateQualityIndicator(duration) {
+    const bitrate = calculateOptimalBitrate(duration);
+    const qualityIndicator = document.getElementById('quality-indicator');
+    
+    if (duration <= 0.5) {
+        qualityIndicator.textContent = '💎 Ultra Quality';
+    } else if (duration <= 1.0) {
+        qualityIndicator.textContent = '🟢 High Quality';
+    } else if (duration <= 2.0) {
+        qualityIndicator.textContent = '🟡 Good Quality';
+    } else {
+        qualityIndicator.textContent = '🟠 Standard Quality';
+    }
+    
+    const estimatedSize = Math.round((bitrate * duration) / 8 / 1024);
+    qualityIndicator.title = `${Math.round(bitrate/1000)}Kbps (≈${estimatedSize}KB)`;
 }
