@@ -776,7 +776,7 @@ function updateTransform() {
 async function exportForSticker() {
     try {
         if (!pixiApp || !pixiApp.view) {
-            throw new Error('Animation system not properly initialized');
+            throw new Error('Animation system not properly initialized. Please refresh the page.');
         }
 
         const loadingDiv = document.createElement('div');
@@ -784,7 +784,15 @@ async function exportForSticker() {
         loadingDiv.innerHTML = '<h3>Preparing Export...</h3>';
         document.body.appendChild(loadingDiv);
 
-        const canvas = pixiApp.view;
+        const canvas = pixiApp.view || document.getElementById('preview-canvas');
+        if (!canvas) {
+            throw new Error('No canvas found for recording');
+        }
+
+        if (!MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+            throw new Error('Your browser does not support WebM VP9 format required for Telegram stickers.');
+        }
+
         const loopCount = parseInt(document.getElementById('loop-count').value);
         const totalFrames = FRAMES_IN_SEQUENCE * loopCount;
         const duration = (FRAME_DURATION * totalFrames) / 1000;
@@ -793,7 +801,6 @@ async function exportForSticker() {
         startTime = performance.now();
         animationStartTime = startTime;
         
-        // Ensure animation is at starting position
         await new Promise(resolve => {
             requestAnimationFrame(() => {
                 if (piggySprite) {
@@ -804,38 +811,32 @@ async function exportForSticker() {
             });
         });
 
-        // Use H.264 codec for maximum compatibility
-        const options = {
-            mimeType: 'video/mp4;codecs=avc1.42E01E',
-            videoBitsPerSecond: calculateOptimalBitrate(duration)
-        };
+        await new Promise(requestAnimationFrame);
 
-        // Fallback options if primary codec isn't supported
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options.mimeType = 'video/mp4';
-        }
+        const options = {
+            mimeType: 'video/webm;codecs=vp9',
+            videoBitsPerSecond: calculateOptimalBitrate(duration),
+            frameRate: 30
+        };
 
         const stream = canvas.captureStream(30);
         const recorder = new MediaRecorder(stream, options);
         const chunks = [];
-
         recorder.ondataavailable = e => chunks.push(e.data);
 
         const recordingPromise = new Promise((resolve, reject) => {
-            recorder.onstop = async () => {
-                try {
-                    const blob = new Blob(chunks, { type: 'video/mp4' });
-                    resolve(blob);
-                } catch (error) {
-                    reject(error);
-                }
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm;codecs=vp9' });
+                resolve(blob);
             };
             recorder.onerror = reject;
         });
 
         recorder.start();
 
+        // Use original duration (not doubled)
         const exactDuration = (FRAME_DURATION * (totalFrames + 1));
+        
         setTimeout(() => {
             if (recorder.state === 'recording') {
                 recorder.stop();
@@ -846,24 +847,23 @@ async function exportForSticker() {
         loadingDiv.remove();
 
         const url = URL.createObjectURL(blob);
-        const fileSize = blob.size / 1024;
-
-        // Create simple download dialog
         const exportDiv = document.createElement('div');
         exportDiv.className = 'export-dialog';
         exportDiv.innerHTML = `
-            <h3>Download Animation</h3>
-            <p>File size: ${fileSize.toFixed(1)}KB</p>
-            <button onclick="downloadSticker('${url}', 'animation', 'mp4')" class="primary-btn">
-                Download MP4
-            </button>
+            <h3>Export Telegram Sticker</h3>
+            <div class="format-group" data-recommended="true">
+                <h4>Ready to Upload</h4>
+                <button onclick="downloadSticker('${url}', 'telegram', 'webm')" class="primary-btn">
+                    📱 Download for Telegram
+                </button>
+            </div>
             <button class="cancel" onclick="this.parentElement.remove()">Cancel</button>
         `;
         document.body.appendChild(exportDiv);
 
     } catch (error) {
         console.error('Export failed:', error);
-        alert(`Export failed: ${error.message}\nPlease try again or use a different browser.`);
+        alert(`Export failed: ${error.message}\nFor Telegram stickers, please use Chrome or Edge browser which support WebM VP9 format.`);
         document.querySelector('.loading')?.remove();
     }
 }
@@ -1067,16 +1067,15 @@ function getSupportedMimeType() {
     };
 }
 
-function downloadSticker(url, prefix, extension) {
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[^0-9]/g, '');
+function downloadSticker(url, platform, extension) {
+    const stickerName = 'sticker';
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${prefix}_${timestamp}.${extension}`;
+    a.download = `${stickerName}_${platform}.${extension}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    document.querySelector('.export-dialog')?.remove();
 }
 
 function createWaterDropTexture() {
